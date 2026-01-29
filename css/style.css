@@ -1,0 +1,53 @@
+body {
+  background-color: #f8f9fa;
+}
+
+/* HERO SECTION */
+.hero {
+  background: linear-gradient(to right, #0d6efd, #0b5ed7);
+  color: white;
+  padding: 80px 20px;
+}
+
+.hero h1 {
+  font-weight: bold;
+}
+
+.hero p {
+  font-size: 18px;
+  margin-top: 15px;
+}
+
+/* SEARCH BAR */
+.search-box {
+  margin-top: -30px;
+  position: relative;
+  z-index: 10;
+}
+
+/* ITEM CARDS */
+.item-card img {
+  height: 180px;
+  object-fit: cover;
+}
+
+/* FOOTER */
+.footer {
+  background-color: #212529;
+  color: white;
+  padding: 20px 0;
+  margin-top: 50px;
+}
+
+/* LOGIN & SIGNUP CARDS */
+.login-card,
+.signup-card {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 8px;
+}
+
+/* UPLOAD PAGE */
+.upload-card {
+  border-radius: 8px;
+}

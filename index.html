@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>LIMS | Lost Items Management System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <!-- ========== NAVBAR ========== -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="index.html">LIMS</a>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navMenu">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link active" href="index.html">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Lost Items</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#">Found Items</a></li>
+                    <li class="nav-item"><a class="nav-link" href="login.html">Login</a></li>
+                    <li class="nav-item"><a class="nav-link" href="signup.html">Sign Up</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ========== HERO SECTION ========== -->
+    <section class="hero">
+        <div class="container text-center">
+            <h1>Lost Items Management System</h1>
+            <p>Report lost or found items easily and help return belongings to their owners.</p>
+
+            <div class="mt-4">
+                <a href="upload.html" class="btn btn-light btn-lg me-2">Report Lost Item</a>
+                <a href="upload.html" class="btn btn-outline-light btn-lg">Report Found Item</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== SEARCH BAR ========== -->
+    <div class="container search-box">
+        <div class="card shadow">
+            <div class="card-body">
+                <form class="row g-2">
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" placeholder="Search item name">
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select">
+                            <option selected>Category</option>
+                            <option>Phone</option>
+                            <option>ID Card</option>
+                            <option>Wallet</option>
+                            <option>Document</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select">
+                            <option selected>Location</option>
+                            <option>Main Campus</option>
+                            <option>Library</option>
+                            <option>Cafeteria</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button type="button" class="btn btn-primary">Search</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== RECENT ITEMS ========== -->
+    <div class="container mt-5">
+        <h3 class="mb-4 text-center">Recently Reported Items</h3>
+
+        <div class="row g-4">
+
+            <div class="col-md-4">
+                <div class="card item-card shadow-sm">
+                    <img src="https://via.placeholder.com/400x200" class="card-img-top" alt="item">
+                    <div class="card-body">
+                        <h5 class="card-title">Lost Phone</h5>
+                        <p class="card-text">Black Samsung phone found near library.</p>
+                        <span class="badge bg-danger">Lost</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card item-card shadow-sm">
+                    <img src="https://via.placeholder.com/400x200" class="card-img-top" alt="item">
+                    <div class="card-body">
+                        <h5 class="card-title">Found ID Card</h5>
+                        <p class="card-text">Student ID found at cafeteria.</p>
+                        <span class="badge bg-success">Found</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card item-card shadow-sm">
+
+                    <img src="https://via.placeholder.com/400x200" class="card-img-top" alt="item">
+                    <div class="card-body">
+                        <h5 class="card-title">Lost Wallet</h5>
+                        <p class="card-text">Brown wallet lost near main gate.</p>
+                        <span class="badge bg-danger">Lost</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ========== FOOTER ========== -->
+    <footer class="footer text-center">
+        <div class="container">
+            <p class="mb-0">© 2026 Lost Items Management System</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+
+</html>
