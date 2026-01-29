@@ -51,3 +51,9 @@ body {
 .upload-card {
   border-radius: 8px;
 }
+
+/* SUCCESS PAGE */
+.success-card {
+  max-width: 500px;
+  border-radius: 10px;
+}

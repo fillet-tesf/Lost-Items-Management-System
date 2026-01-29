@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Account Created | LIMS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Your Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <div class="container d-flex justify-content-center align-items-center min-vh-100">
+        <div class="card shadow text-center p-5 success-card signup-success-card">
+
+            <div class="mb-4">
+                <span class="check-icon">🎉</span>
+            </div>
+
+            <h3 class="mb-3">Account Created!</h3>
+
+            <p id="successMessage" class="lead">
+                Your account has been successfully created.
+            </p>
+
+            <a href="login.html" class="btn btn-primary mt-3" id="successButton">
+                Go to Login
+            </a>
+
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- jQuery -->
+    <script src="jquery-4.0.0.js"></script>
+
+    <script>
+        // Optional: Read user's name from URL
+        const params = new URLSearchParams(window.location.search);
+        const name = params.get("type"); // same as in your signup JS redirect
+
+        if (name) {
+            $("#successMessage").text("Thank you, " + name + "! Your account has been successfully created.");
+        }
+    </script>
+
+</body>
+
+</html>

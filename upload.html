@@ -30,65 +30,92 @@
 
                     <h3 class="text-center mb-4">Report Lost / Found Item</h3>
 
-                    <form>
+                    <form id="uploadForm" novalidate>
 
                         <!-- Item Type -->
                         <div class="mb-3">
                             <label class="form-label">Item Type</label>
-                            <select class="form-select">
-                                <option selected disabled>Select item type</option>
+                            <select id="itemType" class="form-select">
+                                <option value="">Select item type</option>
                                 <option value="lost">Lost</option>
                                 <option value="found">Found</option>
                             </select>
+                            <div class="invalid-feedback">
+                                Please select item type.
+                            </div>
                         </div>
 
                         <!-- Item Name -->
                         <div class="mb-3">
                             <label class="form-label">Item Name</label>
-                            <input type="text" class="form-control" placeholder="e.g. Mobile Phone">
+                            <input id="itemName" type="text" class="form-control" placeholder="e.g. Mobile Phone">
+                            <div class="invalid-feedback">
+                                Item name is required.
+                            </div>
                         </div>
 
                         <!-- Category -->
                         <div class="mb-3">
                             <label class="form-label">Category</label>
-                            <select class="form-select">
-                                <option selected disabled>Select category</option>
+                            <select id="category" class="form-select">
+                                <option value="">Select category</option>
                                 <option>Phone</option>
                                 <option>ID Card</option>
                                 <option>Wallet</option>
                                 <option>Document</option>
                                 <option>Other</option>
                             </select>
+                            <div class="invalid-feedback">
+                                Please select a category.
+                            </div>
                         </div>
 
-                        <!-- Location -->
+                        <!-- Location (DROPDOWN – fixed) -->
                         <div class="mb-3">
                             <label class="form-label">Location</label>
-                            <input type="text" class="form-control" placeholder="e.g. Library, Main Gate">
+                            <select id="location" class="form-select">
+                                <option value="">Select location</option>
+                                <option>Main Campus</option>
+                                <option>Library</option>
+                                <option>Cafeteria</option>
+                                <option>Main Gate</option>
+                                <option>Dormitory</option>
+                            </select>
+                            <div class="invalid-feedback">
+                                Please select a location.
+                            </div>
                         </div>
 
                         <!-- Date -->
                         <div class="mb-3">
                             <label class="form-label">Date</label>
-                            <input type="date" class="form-control">
+                            <input id="date" type="date" class="form-control">
+                            <div class="invalid-feedback">
+                                Please select a date.
+                            </div>
                         </div>
 
                         <!-- Description -->
                         <div class="mb-3">
                             <label class="form-label">Description</label>
-                            <textarea class="form-control" rows="3"
+                            <textarea id="description" class="form-control" rows="3"
                                 placeholder="Add more details about the item"></textarea>
+                            <div class="invalid-feedback">
+                                Description is required.
+                            </div>
                         </div>
 
-                        <!-- Image Upload -->
+                        <!-- Image Upload (optional) -->
                         <div class="mb-3">
-                            <label class="form-label">Upload Image</label>
+                            <label class="form-label">Upload Image (optional)</label>
                             <input type="file" class="form-control">
                         </div>
 
                         <!-- Submit -->
                         <div class="d-grid">
-                            <a href="index.html" class="btn btn-primary btn-lg">Submit</a>
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                Submit
+                            </button>
                         </div>
 
                     </form>
@@ -100,6 +127,11 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="jquery-4.0.0.js"></script>
+
+    <!-- Custom JS -->
+    <script src="js/main.js"></script>
 
 </body>
 
