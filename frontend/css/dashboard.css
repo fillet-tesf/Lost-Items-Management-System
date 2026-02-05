@@ -1,0 +1,33 @@
+body {
+  background: #f4f6f9;
+  font-family: Arial, sans-serif;
+}
+
+.sidebar {
+  width: 240px;
+  min-height: 100vh;
+  background: #212529;
+}
+
+.sidebar .nav-link {
+  color: #bbb;
+  margin: 5px 0;
+}
+
+.sidebar .nav-link.active,
+.sidebar .nav-link:hover {
+  background: #0d6efd;
+  color: white;
+  border-radius: 6px;
+}
+
+.content {
+  flex: 1;
+}
+
+.stat-card {
+  padding: 15px;
+  border: none;
+  border-radius: 10px;
+  text-align: center;
+}

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>User Dashboard | LIMS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+
+<body>
+
+    <div class="d-flex">
+
+        <!-- SIDEBAR -->
+        <div class="sidebar p-3">
+            <h4 class="text-white">LIMS</h4>
+            <hr class="text-white">
+
+            <ul class="nav flex-column">
+                <li class="nav-item"><a class="nav-link active" data-page="user-overview" href="#">Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link" data-page="my-items" href="#">My Items</a></li>
+                <li class="nav-item"><a class="nav-link" data-page="profile" href="#">Profile</a></li>
+            </ul>
+        </div>
+
+        <!-- CONTENT -->
+        <div class="content p-4" id="dashboardContent">
+
+            <div class="d-flex justify-content-between mb-4">
+                <h3>Welcome back, User</h3>
+                <button class="btn btn-primary">Report New Item</button>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="card stat-card">
+                        <h6>Total Reported</h6>
+                        <h3>12</h3>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card stat-card">
+                        <h6>Matches</h6>
+                        <h3>3</h3>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card stat-card">
+                        <h6>Pending</h6>
+                        <h3>2</h3>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card stat-card">
+                        <h6>Claimed</h6>
+                        <h3>7</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-3">
+                <h5>Recent Items</h5>
+
+                <table class="table mt-3">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Category</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr>
+                            <td>Blue Backpack</td>
+                            <td>Bag</td>
+                            <td>Library</td>
+                            <td><span class="badge bg-success">Matched</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="js/dashboard.js"></script>
+
+</body>
+
+</html>

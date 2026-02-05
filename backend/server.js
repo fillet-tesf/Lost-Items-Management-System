@@ -45,9 +45,10 @@ app.get("/", (req, res) => {
 // fetch items with optional filters
 
 app.get("/items", (req, res) => {
-  const { type, category, location } = req.query;
+  const { type, category, location, q } = req.query;
 
-  let sql = ` SELECT 
+  let sql = `
+    SELECT 
       items.id,
       items.item_type,
       items.title,
@@ -63,27 +64,33 @@ app.get("/items", (req, res) => {
     JOIN locations ON items.location_id = locations.id
     JOIN item_statuses ON items.item_status_id = item_statuses.id
     JOIN users ON items.user_id = users.id
-    WHERE 1=1
+    WHERE item_statuses.status_name != 'deleted'
    `;
 
   const params = [];
 
-  // Filter by lost / found
+  // lost / found filter
   if (type) {
     sql += " AND items.item_type = ?";
     params.push(type);
   }
 
-  // Filter by category
+  // category filter
   if (category) {
     sql += " AND items.category_id = ?";
     params.push(category);
   }
 
-  // Filter by location
+  // location filter
   if (location) {
     sql += " AND items.location_id = ?";
     params.push(location);
+  }
+
+  // keyword search
+  if (q) {
+    sql += " AND (items.title LIKE ? OR items.description LIKE ?)";
+    params.push(`%${q}%, %${q}% `);
   }
 
   sql += " ORDER BY items.created_at DESC";
