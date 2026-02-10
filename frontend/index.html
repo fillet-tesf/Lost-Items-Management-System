@@ -13,6 +13,98 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script>
+    $(function () {
+        const token = localStorage.getItem("token");
+
+        if (token) {
+            $("#navMenu ul").append(
+                `<li class="nav-item">
+        <a class="nav-link" href="user-dashboard.html">Dashboard</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" id="logoutBtn" href="#">Logout</a>
+      </li>`
+            );
+
+            $("#navMenu a[href='login.html']").parent().remove();
+            $("#navMenu a[href='signup.html']").parent().remove();
+        }
+
+        $(document).on("click", "#logoutBtn", function () {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            location.reload();
+        });
+        $(document).on("click", ".clickable-item", function () {
+            const id = $(this).data("id");
+            window.location.href = "item.html?id=" + id;
+        });
+    });
+</script>
+
+
+<script>
+    $(function () {
+        $.get(window.location.origin + "/home-items", function (items) {
+
+            items.forEach(item => {
+
+                const image = item.image_url
+                    ? window.location.origin + item.image_url
+                    : "https://via.placeholder.com/400x200";
+
+                const badge =
+                    item.item_type === "lost"
+                        ? '<span class="badge bg-danger">Lost</span>'
+                        : '<span class="badge bg-success">Found</span>';
+
+                $("#itemsContainer").append(`
+                    <div class="col-md-4">
+                        <div class="card item-card shadow-sm clickable-item" data-id="${item.id}">
+                            <img src="${image}" class="card-img-top">
+                                <div class="card-body">
+                                    <h5 class="card-title">${item.title}</h5>
+                                    <p class="card-text">${item.description}</p>
+                                    ${badge}
+                                </div>
+                        </div>
+                    </div> `
+                );
+            });
+
+        });
+    });
+</script>
+
+
+<script>
+    $("#searchForm").submit(function (e) {
+        e.preventDefault();
+
+        const q = $("input[type='text']").val();
+        const category = $("select").eq(0).val();
+        const location = $("select").eq(1).val();
+
+        let url = "search-results.html?q=" + encodeURIComponent(q);
+
+        if (category && category !== "Category") {
+            url += "&category=" + category;
+        }
+
+        if (location && location !== "Location") {
+            url += "&location=" + location;
+        }
+
+        window.location.href = url;
+    });
+</script>
+
+
+
+
 <body>
 
     <!-- ========== NAVBAR ========== -->
@@ -53,7 +145,7 @@
     <div class="container search-box">
         <div class="card shadow">
             <div class="card-body">
-                <form class="row g-2">
+                <form id="searchForm" class="row g-2">
                     <div class="col-md-4">
                         <input type="text" class="form-control" placeholder="Search item name">
                     </div>
@@ -75,7 +167,7 @@
                         </select>
                     </div>
                     <div class="col-md-2 d-grid">
-                        <button type="button" class="btn btn-primary">Search</button>
+                        <button type="submit" class="btn btn-primary">Search</button>
                     </div>
                 </form>
             </div>
@@ -86,7 +178,7 @@
     <div class="container mt-5">
         <h3 class="mb-4 text-center">Recently Reported Items</h3>
 
-        <div class="row g-4">
+        <div id="itemsContainer" class="row g-4">
 
             <div class="col-md-4">
                 <div class="card item-card shadow-sm">

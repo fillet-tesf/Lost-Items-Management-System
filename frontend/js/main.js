@@ -2,6 +2,7 @@ $(document).ready(function () {
   // -------- SUBMIT VALIDATION FOR UPLOAD PAGE--------
   $("#uploadForm").on("submit", function (e) {
     e.preventDefault();
+    e.stopPropagation();
 
     let isValid = true;
 
@@ -21,10 +22,63 @@ $(document).ready(function () {
     checkField("#date");
     checkField("#description");
 
-    if (isValid) {
-      const type = $("#itemType").val();
-      window.location.href = "success.html?type=" + type;
+    if (!isValid) return;
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      alert("Please login first");
+      window.location.href = "login.html";
+      return;
     }
+
+    const formData = new FormData();
+
+    const itemType = $("#itemType").val();
+    const title = $("#itemName").val();
+    const description = $("#description").val();
+    const category_id = $("#category").val();
+    const location_id = $("#location").val();
+    const date = $("#date").val();
+    const image = $("#image")[0]?.files[0];
+
+    formData.append("item_type", itemType);
+    formData.append("title", title);
+    formData.append("description", description);
+    formData.append("category_id", category_id);
+    formData.append("location_id", location_id);
+
+    if (itemType === "lost") {
+      formData.append("lost_date", date);
+    } else {
+      formData.append("found_date", date);
+    }
+
+    if (image) {
+      formData.append("image", image);
+    }
+
+    $.ajax({
+      url: window.location.origin + "/items",
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+      },
+      processData: false,
+      contentType: false,
+      //cache: false,
+      data: formData,
+
+      success: function () {
+        alert("Item uploaded successfully");
+        window.location.href = "success.html";
+      },
+
+      error: function (err) {
+        alert(err.responseJSON?.message || "Upload failed");
+      },
+    });
+    return false;
   });
 
   // -------- LIVE ERROR REMOVAL --------
@@ -66,10 +120,34 @@ $("#signUpForm").on("submit", function (e) {
   checkField("#password");
   checkField("#confirmPassword");
 
-  if (isValid) {
-    const type = $("#fullName").val();
-    window.location.href = "signup-success.html?type=" + type;
+  if (!isValid) return;
+
+  if ($("#password").val() !== $("#confirmPassword").val()) {
+    alert("Passwords do not match");
+    return;
   }
+
+  const userData = {
+    fullName: $("#fullName").val(),
+    email: $("#email").val(),
+    phone: $("#phone").val(),
+    password: $("#password").val(),
+  };
+
+  $.ajax({
+    url: window.location.origin + "/signup",
+    method: "POST",
+    contentType: "application/json",
+    data: JSON.stringify(userData),
+
+    success: function () {
+      window.location.href = "signup-success.html";
+    },
+
+    error: function (err) {
+      alert(err.responseJSON?.message || "Signup failed");
+    },
+  });
 });
 
 // -------- LIVE ERROR REMOVAL --------
@@ -102,10 +180,35 @@ $("#loginForm").on("submit", function (e) {
 
   checkField("#loginEmailOrPhone");
   checkField("#loginPassword");
-  if (isValid) {
-    const type = $("#loginEmailOrPhone").val();
-    window.location.href = "index.html";
-  }
+
+  if (!isValid) return;
+
+  const email = $("#loginEmailOrPhone").val();
+  const password = $("#loginPassword").val();
+
+  $.ajax({
+    url: window.location.origin + "/login",
+    method: "POST",
+    contentType: "application/json",
+    data: JSON.stringify({ email, password }),
+
+    success: function (response) {
+      // Save JWT
+      localStorage.setItem("token", response.token);
+      localStorage.setItem("user", JSON.stringify(response.user));
+
+      // Redirect by role
+      if (response.user.role === "admin") {
+        window.location.href = "admin-dashboard.html";
+      } else {
+        window.location.href = "index.html";
+      }
+    },
+
+    error: function (err) {
+      alert(err.responseJSON?.message || "Login failed");
+    },
+  });
 });
 
 // -------- LIVE ERROR REMOVAL --------

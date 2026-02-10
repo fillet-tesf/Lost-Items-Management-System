@@ -37,9 +37,65 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use("/uploads", express.static("uploads"));
+app.use(express.static(path.join(__dirname, "../frontend"))); // for serving frontend files if needed
 
 app.get("/", (req, res) => {
-  res.send("LIMS backend running");
+  res.sendFile(path.join(__dirname, "../frontend/index.html"));
+});
+
+app.get("/home-items", (req, res) => {
+  const sql = `
+    SELECT *
+    FROM items
+    ORDER BY RAND()
+    LIMIT 6
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json(err);
+    res.json(results);
+  });
+});
+
+// fetch user's own items
+
+app.get("/my-items", authMiddleware, (req, res) => {
+  const userId = req.user.userId;
+
+  const sql = `
+    SELECT 
+      items.id,
+      items.title,
+      items.item_type,
+      items.created_at,
+      categories.name AS category,
+      locations.name AS location,
+      item_statuses.status_name AS status
+    FROM items
+    JOIN categories ON items.category_id = categories.id
+    JOIN locations ON items.location_id = locations.id
+    JOIN item_statuses ON items.item_status_id = item_statuses.id
+    WHERE items.user_id = ?
+    ORDER BY items.created_at DESC
+  `;
+
+  db.query(sql, [userId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: "Failed to fetch items" });
+    }
+
+    res.json(results);
+  });
+});
+
+app.get("/profile", authMiddleware, (req, res) => {
+  const sql =
+    "SELECT id, full_name AS name, email, phone, role, created_at FROM users WHERE id = ?";
+
+  db.query(sql, [req.user.userId], (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result[0]);
+  });
 });
 
 // fetch items with optional filters
@@ -90,7 +146,7 @@ app.get("/items", (req, res) => {
   // keyword search
   if (q) {
     sql += " AND (items.title LIKE ? OR items.description LIKE ?)";
-    params.push(`%${q}%, %${q}% `);
+    params.push(`%${q}%`, `%${q}%`);
   }
 
   sql += " ORDER BY items.created_at DESC";
@@ -101,6 +157,45 @@ app.get("/items", (req, res) => {
     }
 
     res.json(results);
+  });
+});
+
+// fetch single item details
+
+app.get("/items/:id", (req, res) => {
+  const itemId = req.params.id;
+
+  const sql = `
+    SELECT 
+      items.id,
+      items.user_id,
+      items.item_type,
+      items.title,
+      items.description,
+      items.image_url,
+      items.created_at,
+      categories.name AS category,
+      locations.name AS location,
+      item_statuses.status_name AS status,
+      users.full_name AS reported_by
+    FROM items
+    JOIN categories ON items.category_id = categories.id
+    JOIN locations ON items.location_id = locations.id
+    JOIN item_statuses ON items.item_status_id = item_statuses.id
+    JOIN users ON items.user_id = users.id
+    WHERE items.id = ?
+  `;
+
+  db.query(sql, [itemId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: "Failed to fetch item" });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    res.json(results[0]);
   });
 });
 
@@ -230,6 +325,9 @@ app.post("/login", (req, res) => {
 // To be implemented: file upload handling using multer or similar middleware
 
 app.post("/items", authMiddleware, upload.single("image"), (req, res) => {
+  console.log("→ POST /items");
+  console.log("req.body:", req.body);
+  console.log("req.file:", req.file ? req.file.filename : "no file");
   const user_id = req.user.userId; // 🔐 FROM TOKEN
 
   const {
@@ -270,7 +368,7 @@ app.post("/items", authMiddleware, upload.single("image"), (req, res) => {
           .status(500)
           .json({ message: "Failed to upload item", error: err });
       }
-
+      console.log("Item uploaded with ID:", result.insertId);
       res.status(201).json({
         message: "Item uploaded successfully",
         item_id: result.insertId,

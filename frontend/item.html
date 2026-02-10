@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Item | LIMS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <div class="container mt-5">
+        <div id="itemDetails" class="card shadow p-4"></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script>
+        $(document).ready(function () {
+
+            const params = new URLSearchParams(window.location.search);
+            const itemId = params.get("id");
+
+            const token = localStorage.getItem("token");
+            const user = JSON.parse(localStorage.getItem("user"));
+
+            $.get(window.location.origin + "/items/" + itemId, function (item) {
+                if (!itemId || !item || item.id === undefined) {
+                    $("#itemDetails").html("<p>Item not found</p>");
+                    return;
+                }
+
+                const image = item.image_url
+                    ? window.location.origin + item.image_url
+                    : "https://via.placeholder.com/400x200";
+
+                let actionButtons = "";
+
+                if (token && user && user.user_id === item.user_id) {
+                    actionButtons = `
+                <button id="editBtn" class="btn btn-warning me-2">Edit</button>
+                <button id="deleteBtn" class="btn btn-danger">Delete</button>
+                        `;
+                } else if (token && user && user.user_id !== item.user_id) {
+                    actionButtons = `
+                        <button class="btn btn-primary">Report Item</button>
+                        `;
+                }
+
+                $("#itemDetails").html(
+                    `<img src="${image}" class="img-fluid mb-3">
+                        <h3>${item.title}</h3>
+                        <p>${item.description}</p>
+                        ${actionButtons}
+                        `);
+            });
+
+            $(document).on("click", "#deleteBtn", function () {
+                if (!confirm("Delete this item?")) return;
+
+                $.ajax({
+                    url: window.location.origin + "/items/" + itemId,
+                    method: "DELETE",
+                    headers: {
+                        Authorization: "Bearer " + token,
+                    },
+                    success: function () {
+                        alert("Item deleted");
+                        window.location.href = "user-dashboard.html";
+                    },
+                });
+            });
+
+        });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+
+</html>

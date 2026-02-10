@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Search Results | LIMS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <div class="container mt-5">
+        <h3 class="mb-4">Search Results</h3>
+
+        <div class="row g-4" id="resultsContainer"></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+
+        const q = params.get("q");
+        const category = params.get("category");
+        const location = params.get("location");
+        const type = params.get("type");
+
+        // Build query string for backend
+        let queryString = "?";
+
+        if (q) queryString += "q=" + q + "&";
+        if (category) queryString += "category=" + category + "&";
+        if (location) queryString += "location=" + location + "&";
+        if (type) queryString += "type=" + type;
+
+        $.get(window.location.origin + "/items" + queryString, function (items) {
+
+            if (items.length === 0) {
+                $("#resultsContainer").html("<p>No items found.</p>");
+                return;
+            }
+
+            items.forEach(item => {
+
+                const image = item.image_url
+                    ? window.location.origin + item.image_url
+                    : "https://via.placeholder.com/400x200";
+
+                const badge =
+                    item.item_type === "lost"
+                        ? '<span class="badge bg-danger">Lost</span>'
+                        : '<span class="badge bg-success">Found</span>';
+
+                $("#resultsContainer").append(`
+      <div class="col-md-4">
+        <div class="card shadow-sm clickable-item" data-id="${item.id}">
+          <img src="${image}" class="card-img-top">
+          <div class="card-body">
+            <h5>${item.title}</h5>
+            <p>${item.description}</p>
+            ${badge}
+          </div>
+        </div>
+      </div>
+    `);
+            });
+
+        });
+
+        // Click → item page
+        $(document).on("click", ".clickable-item", function () {
+            const id = $(this).data("id");
+            window.location.href = "item.html?id=" + id;
+        });
+    </script>
+
+</body>
+
+</html>

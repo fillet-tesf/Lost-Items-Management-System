@@ -30,7 +30,7 @@
         <div class="content p-4" id="dashboardContent">
 
             <div class="d-flex justify-content-between mb-4">
-                <h3>Welcome back, User</h3>
+                <h3>Welcome back, <span id="welcomeName"></span></h3>
                 <button class="btn btn-primary">Report New Item</button>
             </div>
 
@@ -77,13 +77,8 @@
                         </tr>
                     </thead>
 
-                    <tbody>
-                        <tr>
-                            <td>Blue Backpack</td>
-                            <td>Bag</td>
-                            <td>Library</td>
-                            <td><span class="badge bg-success">Matched</span></td>
-                        </tr>
+                    <tbody id="myItemsTable">
+
                     </tbody>
                 </table>
             </div>
