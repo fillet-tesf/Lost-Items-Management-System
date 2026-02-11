@@ -25,18 +25,17 @@
 
         const q = params.get("q");
         const category = params.get("category");
-        const location = params.get("location");
+        const locationId = params.get("location");
         const type = params.get("type");
 
-        // Build query string for backend
         let queryString = "?";
 
         if (q) queryString += "q=" + q + "&";
         if (category) queryString += "category=" + category + "&";
-        if (location) queryString += "location=" + location + "&";
+        if (locationId) queryString += "location=" + locationId + "&";
         if (type) queryString += "type=" + type;
 
-        $.get(window.location.origin + "/items" + queryString, function (items) {
+        $.get("http://localhost:3000/items" + queryString, function (items) {
 
             if (items.length === 0) {
                 $("#resultsContainer").html("<p>No items found.</p>");
@@ -44,9 +43,8 @@
             }
 
             items.forEach(item => {
-
                 const image = item.image_url
-                    ? window.location.origin + item.image_url
+                    ? "http://localhost:3000" + item.image_url
                     : "https://via.placeholder.com/400x200";
 
                 const badge =
@@ -70,11 +68,11 @@
 
         });
 
-        // Click → item page
         $(document).on("click", ".clickable-item", function () {
             const id = $(this).data("id");
             window.location.href = "item.html?id=" + id;
         });
+
     </script>
 
 </body>
