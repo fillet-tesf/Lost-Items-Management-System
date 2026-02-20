@@ -741,6 +741,107 @@ app.post("/admin/reports/action", authMiddleware, (req, res) => {
   });
 });
 
+// admin dashboard stats
+
+app.get("/admin/stats", authMiddleware, (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+
+  const stats = {};
+
+  db.query("SELECT COUNT(*) AS total FROM items", (err, result) => {
+    stats.total_items = result[0].total;
+
+    db.query(
+      "SELECT COUNT(*) AS pending FROM items WHERE item_status_id = (SELECT id FROM item_statuses WHERE status_name='pending')",
+      (err, result) => {
+        stats.pending_items = result[0].pending;
+
+        db.query("SELECT COUNT(*) AS users FROM users", (err, result) => {
+          stats.users = result[0].users;
+
+          db.query(
+            "SELECT COUNT(*) AS reports FROM reported_items WHERE status='pending'",
+            (err, result) => {
+              stats.reports = result[0].reports;
+
+              res.json(stats);
+            },
+          );
+        });
+      },
+    );
+  });
+});
+
+// admin view logs
+
+app.get("/admin/logs", authMiddleware, (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+
+  const sql = `
+    SELECT 
+      aa.id,
+      aa.action_type,
+      aa.target_id,
+      aa.target_type,
+      aa.details,
+      aa.created_at,
+      u.full_name AS admin_name
+    FROM admin_actions aa
+    JOIN users u ON aa.admin_id = u.id
+    ORDER BY aa.created_at DESC
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: "Failed to fetch logs" });
+    }
+
+    res.json(results);
+  });
+});
+
+// admin manage users
+
+app.get("/admin/users", authMiddleware, (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+
+  db.query(
+    "SELECT id, full_name, email, role, created_at FROM users",
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ message: "Failed to fetch users" });
+      }
+
+      res.json(results);
+    },
+  );
+});
+
+// admin delete user
+
+app.delete("/admin/users/:id", authMiddleware, (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+
+  const userId = req.params.id;
+
+  db.query("DELETE FROM users WHERE id = ?", [userId], (err) => {
+    if (err) {
+      return res.status(500).json({ message: "Delete failed" });
+    }
+
+    res.json({ message: "User deleted" });
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
