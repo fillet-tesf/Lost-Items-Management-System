@@ -1,5 +1,6 @@
 body {
   background-color: #f8f9fa;
+  color: #1f2937;
 }
 
 /* HERO SECTION */
@@ -29,6 +30,21 @@ body {
 .item-card img {
   height: 180px;
   object-fit: cover;
+}
+
+.item-card {
+  border-radius: 18px;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.item-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+}
+
+.item-details-shell .card {
+  border-radius: 24px;
 }
 
 /* FOOTER */

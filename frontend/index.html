@@ -20,9 +20,13 @@
         const token = localStorage.getItem("token");
 
         if (token) {
+            const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
             $("#navMenu ul").append(
                 `<li class="nav-item">
         <a class="nav-link" href="user-dashboard.html">Dashboard</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="wallet.html">Coins: ${currentUser.coins || 0}</a>
       </li>
       <li class="nav-item">
         <a class="nav-link" id="logoutBtn" href="#">Logout</a>
@@ -40,7 +44,7 @@
         });
         $(document).on("click", ".clickable-item", function () {
             const id = $(this).data("id");
-            window.location.href = "item.html?id=" + id;
+            window.location.href = "item-details.html?id=" + id;
         });
     });
 </script>
@@ -100,8 +104,8 @@
             <div class="collapse navbar-collapse" id="navMenu">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link active" href="index.html">Home</a></li>
-                    <li class="nav-item"><a class="nav-link" href="lost-items.html">Lost Items</a></li>
-                    <li class="nav-item"><a class="nav-link" href="found-items.html">Found Items</a></li>
+                    <li class="nav-item"><a class="nav-link" href="search-results.html?type=lost">Lost Items</a></li>
+                    <li class="nav-item"><a class="nav-link" href="search-results.html?type=found">Found Items</a></li>
                     <li class="nav-item"><a class="nav-link" href="login.html">Login</a></li>
                     <li class="nav-item"><a class="nav-link" href="signup.html">Sign Up</a></li>
                 </ul>
@@ -116,8 +120,8 @@
             <p>Report lost or found items easily and help return belongings to their owners.</p>
 
             <div class="mt-4">
-                <a href="report-lost.html" class="btn btn-light btn-lg me-2">Report Lost Item</a>
-                <a href="report-found.html" class="btn btn-outline-light btn-lg">Report Found Item</a>
+                <a href="upload.html" class="btn btn-light btn-lg me-2">Report Lost Item</a>
+                <a href="upload.html" class="btn btn-outline-light btn-lg">Report Found Item</a>
             </div>
         </div>
     </section>

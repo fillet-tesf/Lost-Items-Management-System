@@ -1,33 +1,63 @@
 body {
-  background: #f4f6f9;
-  font-family: Arial, sans-serif;
+  background:
+    radial-gradient(circle at top right, rgba(13, 110, 253, 0.09), transparent 28%),
+    linear-gradient(180deg, #f7f9fc 0%, #eef3f9 100%);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .sidebar {
-  width: 240px;
+  width: 250px;
   min-height: 100vh;
-  background: #212529;
+  background: linear-gradient(180deg, #111827 0%, #1f2937 100%);
 }
 
 .sidebar .nav-link {
-  color: #bbb;
-  margin: 5px 0;
+  color: #c9d2e3;
+  margin: 6px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  transition: 0.2s ease;
 }
 
 .sidebar .nav-link.active,
 .sidebar .nav-link:hover {
-  background: #0d6efd;
+  background: rgba(255, 255, 255, 0.1);
   color: white;
-  border-radius: 6px;
 }
 
 .content {
   flex: 1;
+  padding-bottom: 32px;
 }
 
-.stat-card {
-  padding: 15px;
-  border: none;
-  border-radius: 10px;
-  text-align: center;
+.metric-card,
+.dashboard-panel {
+  border-radius: 18px;
+}
+
+.metric-label {
+  color: #6b7280;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.metric-value,
+.panel-value {
+  color: #111827;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-top: 8px;
+}
+
+.metric-note {
+  color: #6b7280;
+  margin-top: 10px;
+  font-size: 0.92rem;
+}
+
+.notification-new {
+  box-shadow: 0 12px 30px rgba(13, 110, 253, 0.12);
+  border-left: 4px solid #0d6efd;
 }

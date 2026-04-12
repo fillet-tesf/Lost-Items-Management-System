@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>User Details | LIMS Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+
+<body>
+    <div class="container py-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="mb-1">User Details</h2>
+                <p class="text-muted mb-0">Admin analytics view for a single user account.</p>
+            </div>
+            <a href="admin-dashboard.html" class="btn btn-outline-secondary">Back to Admin</a>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-lg-6">
+                <div class="card dashboard-panel border-0 shadow-sm">
+                    <div class="card-body">
+                        <h4 id="userName" class="mb-3"></h4>
+                        <div class="row g-3">
+                            <div class="col-md-6"><div class="metric-label">Email</div><div id="userEmail"></div></div>
+                            <div class="col-md-6"><div class="metric-label">Phone</div><div id="userPhone"></div></div>
+                            <div class="col-md-6"><div class="metric-label">Joined</div><div id="userJoined"></div></div>
+                            <div class="col-md-6"><div class="metric-label">Coins</div><div id="userCoins"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="row g-3">
+                    <div class="col-md-6"><div class="card metric-card border-0 shadow-sm"><div class="card-body"><div class="metric-label">Uploads</div><div class="metric-value" id="userUploads"></div></div></div></div>
+                    <div class="col-md-6"><div class="card metric-card border-0 shadow-sm"><div class="card-body"><div class="metric-label">Claims</div><div class="metric-value" id="userClaims"></div></div></div></div>
+                    <div class="col-md-6"><div class="card metric-card border-0 shadow-sm"><div class="card-body"><div class="metric-label">Returns</div><div class="metric-value" id="userReturns"></div></div></div></div>
+                    <div class="col-md-6"><div class="card metric-card border-0 shadow-sm"><div class="card-body"><div class="metric-label">Reports Made</div><div class="metric-value" id="userReportsMade"></div></div></div></div>
+                    <div class="col-md-6"><div class="card metric-card border-0 shadow-sm"><div class="card-body"><div class="metric-label">Reports Received</div><div class="metric-value" id="userReportsReceived"></div></div></div></div>
+                    <div class="col-md-6"><div class="card metric-card border-0 shadow-sm"><div class="card-body"><div class="metric-label">Claim Success Rate</div><div class="metric-value" id="userSuccessRate"></div></div></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="card dashboard-panel border-0 shadow-sm">
+                    <div class="card-body">
+                        <h5 class="mb-3">Uploads</h5>
+                        <canvas id="uploadsChart" height="220"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card dashboard-panel border-0 shadow-sm">
+                    <div class="card-body">
+                        <h5 class="mb-3">Claims</h5>
+                        <canvas id="claimsChart" height="220"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const userId = params.get("id");
+        const token = localStorage.getItem("token");
+
+        $.ajax({
+            url: window.location.origin + "/admin/users/" + userId + "/details",
+            method: "GET",
+            headers: { Authorization: "Bearer " + token },
+            success(data) {
+                const user = data.user;
+                const uploads = data.charts.uploads || {};
+                const claims = data.charts.claims || {};
+
+                $("#userName").text(user.full_name);
+                $("#userEmail").text(user.email);
+                $("#userPhone").text(user.phone);
+                $("#userJoined").text(new Date(user.created_at).toLocaleDateString());
+                $("#userCoins").text((user.coins || 0) + " coins");
+                $("#userUploads").text(user.total_uploaded || 0);
+                $("#userClaims").text(user.total_claims || 0);
+                $("#userReturns").text(user.successful_returns || 0);
+                $("#userReportsMade").text(user.reports_made || 0);
+                $("#userReportsReceived").text(user.reports_received || 0);
+                $("#userSuccessRate").text((user.claim_success_rate || 0) + "%");
+
+                new Chart(document.getElementById("uploadsChart"), {
+                    type: "pie",
+                    data: {
+                        labels: ["Lost Uploads", "Found Uploads"],
+                        datasets: [{
+                            data: [uploads.lost_uploads || 0, uploads.found_uploads || 0],
+                            backgroundColor: ["#dc3545", "#198754"]
+                        }]
+                    }
+                });
+
+                new Chart(document.getElementById("claimsChart"), {
+                    type: "bar",
+                    data: {
+                        labels: ["Completed", "Rejected", "Pending", "Active"],
+                        datasets: [{
+                            label: "Claims",
+                            data: [claims.completed_claims || 0, claims.rejected_claims || 0, claims.pending_claims || 0, claims.active_claims || 0],
+                            backgroundColor: ["#198754", "#dc3545", "#ffc107", "#0dcaf0"]
+                        }]
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>

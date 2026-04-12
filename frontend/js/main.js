@@ -70,7 +70,6 @@ $(document).ready(function () {
       data: formData,
 
       success: function () {
-        alert("Item uploaded successfully");
         window.location.href = "success.html";
       },
 

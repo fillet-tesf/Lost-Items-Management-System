@@ -12,67 +12,113 @@
 
 <body>
 
-    <div class="container mt-5">
-        <h3 class="mb-4">Search Results</h3>
+    <div class="container py-5">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+            <div>
+                <h2 class="mb-1">Search Results</h2>
+                <p class="text-muted mb-0">Browse lost and found items with cleaner paging and better context.</p>
+            </div>
+            <a href="index.html" class="btn btn-outline-secondary">Back Home</a>
+        </div>
 
+        <div id="resultsSummary" class="mb-3 text-muted"></div>
         <div class="row g-4" id="resultsContainer"></div>
+        <div id="pagination" class="d-flex justify-content-center gap-2 mt-4"></div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
     <script>
         const params = new URLSearchParams(window.location.search);
-
         const q = params.get("q");
         const category = params.get("category");
         const locationId = params.get("location");
         const type = params.get("type");
 
-        let queryString = "?";
+        function buildQuery(page) {
+            const query = new URLSearchParams();
+            if (q) query.set("q", q);
+            if (category) query.set("category", category);
+            if (locationId) query.set("location", locationId);
+            if (type) query.set("type", type);
+            query.set("page", page);
+            query.set("limit", 9);
+            return query.toString();
+        }
 
-        if (q) queryString += "q=" + q + "&";
-        if (category) queryString += "category=" + category + "&";
-        if (locationId) queryString += "location=" + locationId + "&";
-        if (type) queryString += "type=" + type;
-
-        $.get("http://localhost:3000/items" + queryString, function (items) {
-
-            if (items.length === 0) {
-                $("#resultsContainer").html("<p>No items found.</p>");
+        function renderPagination(pagination) {
+            if (!pagination || pagination.total_pages <= 1) {
+                $("#pagination").html("");
                 return;
             }
 
-            items.forEach(item => {
-                const image = item.image_url
-                    ? "http://localhost:3000" + item.image_url
-                    : "https://via.placeholder.com/400x200";
+            let buttons = "";
 
-                const badge =
-                    item.item_type === "lost"
+            for (let page = 1; page <= pagination.total_pages; page += 1) {
+                buttons += `
+                    <button class="btn ${page === pagination.page ? "btn-primary" : "btn-outline-secondary"} pageBtn"
+                        data-page="${page}">
+                        ${page}
+                    </button>`;
+            }
+
+            $("#pagination").html(buttons);
+        }
+
+        function loadResults(page = 1) {
+            $.get(window.location.origin + "/items?" + buildQuery(page), function (response) {
+                const items = response.items || [];
+                const pagination = response.pagination;
+
+                if (!items.length) {
+                    $("#resultsSummary").text("No items matched your filters.");
+                    $("#resultsContainer").html("<div class='col-12'><div class='alert alert-light border'>No items found.</div></div>");
+                    $("#pagination").html("");
+                    return;
+                }
+
+                $("#resultsSummary").text(`Showing ${items.length} result(s) on page ${pagination.page} of ${pagination.total_pages}.`);
+
+                const cards = items.map(item => {
+                    const image = item.image_url
+                        ? window.location.origin + item.image_url
+                        : "https://via.placeholder.com/400x220?text=Item";
+
+                    const badge = item.item_type === "lost"
                         ? '<span class="badge bg-danger">Lost</span>'
                         : '<span class="badge bg-success">Found</span>';
 
-                $("#resultsContainer").append(`
-      <div class="col-md-4">
-        <div class="card shadow-sm clickable-item" data-id="${item.id}">
-          <img src="${image}" class="card-img-top">
-          <div class="card-body">
-            <h5>${item.title}</h5>
-            <p>${item.description}</p>
-            ${badge}
-          </div>
-        </div>
-      </div>
-    `);
-            });
+                    return `
+                        <div class="col-md-4">
+                            <div class="card item-card shadow-sm border-0 h-100 clickable-item" data-id="${item.id}">
+                                <img src="${image}" class="card-img-top" alt="Item image">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                                        <h5 class="mb-0">${item.title}</h5>
+                                        ${badge}
+                                    </div>
+                                    <p class="text-muted small mb-2">${item.category} | ${item.location}</p>
+                                    <p class="card-text flex-grow-1">${item.description}</p>
+                                    <button class="btn btn-outline-primary btn-sm mt-2">Open Item</button>
+                                </div>
+                            </div>
+                        </div>`;
+                }).join("");
 
-        });
+                $("#resultsContainer").html(cards);
+                renderPagination(pagination);
+            });
+        }
 
         $(document).on("click", ".clickable-item", function () {
-            const id = $(this).data("id");
-            window.location.href = "item.html?id=" + id;
+            window.location.href = "item-details.html?id=" + $(this).data("id");
         });
 
+        $(document).on("click", ".pageBtn", function () {
+            loadResults($(this).data("page"));
+        });
+
+        loadResults();
     </script>
 
 </body>
