@@ -84,12 +84,16 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script>
         const token = localStorage.getItem("token");
+        const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
 
         function headers() {
             return { Authorization: "Bearer " + token };
         }
 
         function loadWallet() {
+            $("#transactionsList").html("<div class='text-muted'>Loading transactions...</div>");
+            $("#requestsList").html("<div class='text-muted'>Loading recharge requests...</div>");
+
             $.ajax({
                 url: window.location.origin + "/wallet",
                 method: "GET",
@@ -123,6 +127,11 @@
 
                     $("#transactionsList").html(transactions);
                     $("#requestsList").html(requests);
+                },
+                error(xhr) {
+                    const message = xhr.responseJSON?.message || "Failed to load wallet";
+                    $("#transactionsList").html(`<div class='alert alert-danger mb-0'>${message}</div>`);
+                    $("#requestsList").html("<div class='text-muted'>Try reloading the page.</div>");
                 }
             });
         }
@@ -151,7 +160,13 @@
             });
         });
 
-        loadWallet();
+        if (!token) {
+            window.location.href = "login.html";
+        } else if (currentUser.role === "admin") {
+            window.location.href = "admin-dashboard.html";
+        } else {
+            loadWallet();
+        }
     </script>
 </body>
 

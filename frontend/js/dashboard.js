@@ -269,10 +269,26 @@ function renderAdminOverview() {
     headers: authHeaders(),
     success(stats) {
       const cards = [
-        { label: "Total Users", value: stats.total_users || 0, note: "Registered normal users" },
-        { label: "Pending Reports", value: stats.pending_reports || 0, note: "Reports waiting for moderation" },
-        { label: "Verified Items", value: stats.verified_items || 0, note: "Approved by the admin team" },
-        { label: "Completed Claims", value: stats.claimed_items || 0, note: "Claims fully confirmed by both users" },
+        {
+          label: "Total Users",
+          value: stats.total_users || 0,
+          note: "Registered normal users",
+        },
+        {
+          label: "Pending Reports",
+          value: stats.pending_reports || 0,
+          note: "Reports waiting for moderation",
+        },
+        {
+          label: "Verified Items",
+          value: stats.verified_items || 0,
+          note: "Approved by the admin team",
+        },
+        {
+          label: "Completed Claims",
+          value: stats.claimed_items || 0,
+          note: "Claims fully confirmed by both users",
+        },
       ];
 
       $("#dashboardContent").html(`
@@ -353,6 +369,12 @@ function renderNotificationsView() {
   loadNotifications();
 }
 
+function showProfileFeedback(message, type = "success") {
+  $("#profileFeedback").html(`
+    <div class="alert alert-${type} mb-0">${escapeHtml(message)}</div>
+  `);
+}
+
 function loadMyItems() {
   $.ajax({
     url: window.location.origin + "/my-items",
@@ -361,7 +383,7 @@ function loadMyItems() {
     success(items) {
       if (!items.length) {
         $("#myItemsTable").html(
-          "<tr><td colspan='5' class='text-center'>You have not reported any items yet.</td></tr>",
+          "<tr><td colspan='5' class='text-center'>No active items right now.</td></tr>",
         );
         return;
       }
@@ -374,10 +396,16 @@ function loadMyItems() {
               <td>${escapeHtml(item.category)}</td>
               <td>${escapeHtml(item.location)}</td>
               <td>${getStatusBadge(item.status)}</td>
-              <td>
-                <button class="btn btn-sm btn-warning editItem" data-id="${item.id}">Edit</button>
-                <button class="btn btn-sm btn-danger deleteItem" data-id="${item.id}">Delete</button>
-              </td>
+               <td>
+                 <div class="action-buttons">
+                   <button class="btn btn-sm btn-warning editItem" data-id="${item.id}">
+                     <i class="bi bi-pencil-square"></i> Edit
+                   </button>
+                   <button class="btn btn-sm btn-danger deleteItem" data-id="${item.id}">
+                     <i class="bi bi-trash"></i> Delete
+                   </button>
+                 </div>
+               </td>
             </tr>`,
         )
         .join("");
@@ -387,6 +415,54 @@ function loadMyItems() {
     error() {
       $("#myItemsTable").html(
         "<tr><td colspan='5'>Failed to load items</td></tr>",
+      );
+    },
+  });
+}
+
+function loadClaimedItems() {
+  $.ajax({
+    url: window.location.origin + "/my-claimed-items",
+    method: "GET",
+    headers: authHeaders(),
+    success(items) {
+      if (!items.length) {
+        $("#claimedItemsList").html(
+          '<div class="alert alert-light border mb-0">No completed claims yet.</div>',
+        );
+        return;
+      }
+
+      const cards = items
+        .map(
+          (item) => `
+            <div class="card dashboard-panel shadow-sm border-0">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-3">
+                  <div>
+                    <h5 class="mb-1">
+                      <a href="${getItemDetailsUrl(item.found_item_id)}">${escapeHtml(item.found_title)}</a>
+                    </h5>
+                    <p class="text-muted mb-2">
+                      Lost report: <a href="${getItemDetailsUrl(item.lost_item_id)}">${escapeHtml(item.lost_title)}</a>
+                    </p>
+                  </div>
+                  ${getStatusBadge(item.claim_status)}
+                </div>
+                <div class="small text-muted">
+                  Claimant: ${escapeHtml(item.claimant_name)} | Finder: ${escapeHtml(item.finder_name)} | Completed on: ${formatDate(item.created_at)}
+                </div>
+              </div>
+            </div>
+          `,
+        )
+        .join("");
+
+      $("#claimedItemsList").html(cards);
+    },
+    error() {
+      $("#claimedItemsList").html(
+        '<div class="alert alert-danger mb-0">Failed to load claimed items.</div>',
       );
     },
   });
@@ -550,7 +626,9 @@ function loadIncomingClaims() {
                           : ""
                       }
                       ${
-                        (claimStatus === "contact_shared" || claimStatus === "in_progress") && !claim.delivered_confirmed
+                        (claimStatus === "contact_shared" ||
+                          claimStatus === "in_progress") &&
+                        !claim.delivered_confirmed
                           ? `<button class="btn btn-success btn-sm confirmDelivered" data-id="${claim.claim_id}"><i class="bi bi-box-seam"></i> I delivered the item</button>`
                           : ""
                       }
@@ -560,7 +638,9 @@ function loadIncomingClaims() {
                           : ""
                       }
                       ${
-                        ["contact_shared", "in_progress", "completed"].includes(claimStatus)
+                        ["contact_shared", "in_progress", "completed"].includes(
+                          claimStatus,
+                        )
                           ? `<button class="btn btn-outline-warning btn-sm reportClaimUser" data-id="${claim.claim_id}">Report user</button>`
                           : ""
                       }
@@ -665,6 +745,9 @@ function loadProfile() {
       $("#editProfileName").val(profile.name);
       $("#editProfileEmail").val(profile.email);
       $("#editProfilePhone").val(profile.phone);
+      if ($("#welcomeName").length) {
+        $("#welcomeName").text(profile.name);
+      }
     })
     .catch(() => {
       $("#dashboardContent").append(
@@ -917,22 +1000,26 @@ function loadAdminClaims(group) {
     method: "GET",
     headers: authHeaders(),
     success(claims) {
+      const showDeleteAction = group === "completed";
       const rows = claims.length
         ? claims
             .map(
               (claim) => `
                 <tr>
                   <td><a href="${getItemDetailsUrl(claim.found_item_id)}">${escapeHtml(claim.found_title)}</a></td>
-                  <td>${escapeHtml(claim.claimant_name)}</td>
-                  <td>${escapeHtml(claim.finder_name)}</td>
+                  <td><a href="${getAdminUserUrl(claim.claimant_id)}">${escapeHtml(claim.claimant_name)}</a></td>
+                  <td><a href="${getAdminUserUrl(claim.finder_id)}">${escapeHtml(claim.finder_name)}</a></td>
                   <td>${getStatusBadge(claim.claim_status)}</td>
                   <td>${claim.delivered_confirmed ? "Yes" : "No"}</td>
                   <td>${claim.received_confirmed ? "Yes" : "No"}</td>
                   <td>${formatDate(claim.created_at)}</td>
+                  <td>
+                    ${showDeleteAction ? `<button class="btn btn-sm btn-outline-danger deleteItem" data-id="${claim.found_item_id}" data-refresh="completed-claims">Remove Item</button>` : '<span class="text-muted small">In progress</span>'}
+                  </td>
                 </tr>`,
             )
             .join("")
-        : "<tr><td colspan='7' class='text-center'>No claims found.</td></tr>";
+        : "<tr><td colspan='8' class='text-center'>No claims found.</td></tr>";
 
       $("#adminClaimsTable").html(rows);
     },
@@ -976,6 +1063,7 @@ function renderProfileView() {
         <i class="bi bi-pencil"></i>
       </button>
     </div>
+    <div id="profileFeedback" class="mb-3"></div>
     <div class="row g-3">
       <div class="col-lg-7">
         <div class="card dashboard-panel shadow-sm border-0">
@@ -1001,6 +1089,17 @@ function renderProfileView() {
           <div class="col-12">
             <div class="card metric-card border-0 shadow-sm"><div class="card-body"><div class="metric-label">Claims Made</div><div class="metric-value" id="profileClaims"></div></div></div>
           </div>
+        </div>
+      </div>
+    </div>
+    <div class="card border-danger shadow-sm mt-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+          <div>
+            <h5 class="text-danger mb-1">Delete Account</h5>
+            <p class="text-muted mb-0">This removes your profile, items, claims, and related activity.</p>
+          </div>
+          <button class="btn btn-outline-danger" id="deleteAccountBtn">Delete Account</button>
         </div>
       </div>
     </div>
@@ -1162,6 +1261,7 @@ function openDashboardPage(page) {
               <th>Delivered</th>
               <th>Received</th>
               <th>Started</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="adminClaimsTable"></tbody>
@@ -1186,6 +1286,7 @@ function openDashboardPage(page) {
               <th>Delivered</th>
               <th>Received</th>
               <th>Started</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="adminClaimsTable"></tbody>
@@ -1263,6 +1364,20 @@ function openDashboardPage(page) {
     return;
   }
 
+  if (page === "claimed-items") {
+    $("#dashboardContent").html(`
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h3 class="mb-1">Claimed Items</h3>
+          <p class="text-muted mb-0">Completed handoffs are kept here as a read-only history.</p>
+        </div>
+      </div>
+      <div id="claimedItemsList" class="d-grid gap-3"></div>
+    `);
+    loadClaimedItems();
+    return;
+  }
+
   if (page === "matches") {
     renderUserMatchesView();
     return;
@@ -1296,6 +1411,7 @@ $(document).on("click", ".ignoreReport", function () {
 
 $(document).on("click", ".deleteItem", function () {
   const itemId = $(this).data("id");
+  const refreshTarget = $(this).data("refresh");
 
   if (!confirm("Delete this item?")) return;
 
@@ -1304,11 +1420,15 @@ $(document).on("click", ".deleteItem", function () {
     method: "DELETE",
     headers: authHeaders(),
     success() {
-      alert("Item deleted");
-      loadMyItems();
+      alert("Item deleted successfully");
+      if (refreshTarget) {
+        openDashboardPage(refreshTarget);
+      } else {
+        loadMyItems();
+      }
     },
-    error() {
-      alert("Delete failed");
+    error(xhr) {
+      alert(xhr.responseJSON?.message || "Failed to delete item");
     },
   });
 });
@@ -1582,31 +1702,67 @@ $(document).on("click", "#openEditProfile", function () {
 });
 
 $(document).on("click", "#saveProfileBtn", function () {
+  const fullName = $("#editProfileName").val().trim();
+  const email = $("#editProfileEmail").val().trim();
+  const phone = $("#editProfilePhone").val().trim();
+
+  if (!fullName || !email || !phone) {
+    showProfileFeedback("Fill in name, email, and phone before saving.", "danger");
+    return;
+  }
+
   $.ajax({
     url: window.location.origin + "/profile",
     method: "PUT",
     contentType: "application/json",
     headers: authHeaders(),
     data: JSON.stringify({
-      full_name: $("#editProfileName").val(),
-      email: $("#editProfileEmail").val(),
-      phone: $("#editProfilePhone").val(),
+      full_name: fullName,
+      email,
+      phone,
     }),
     success(res) {
-      alert(res.message);
       const updatedUser = JSON.parse(localStorage.getItem("user") || "{}");
-      updatedUser.full_name = $("#editProfileName").val();
-      updatedUser.email = $("#editProfileEmail").val();
-      updatedUser.phone = $("#editProfilePhone").val();
+      updatedUser.full_name = fullName;
+      updatedUser.email = email;
+      updatedUser.phone = phone;
       localStorage.setItem("user", JSON.stringify(updatedUser));
       const modal = bootstrap.Modal.getOrCreateInstance(
         document.getElementById("editProfileModal"),
       );
       modal.hide();
+      showProfileFeedback(res.message, "success");
       loadProfile();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to update profile");
+      showProfileFeedback(
+        xhr.responseJSON?.message || "Failed to update profile",
+        "danger",
+      );
+    },
+  });
+});
+
+$(document).on("click", "#deleteAccountBtn", function () {
+  if (!confirm("Delete your account permanently? This cannot be undone.")) {
+    return;
+  }
+
+  $.ajax({
+    url: window.location.origin + "/profile",
+    method: "DELETE",
+    headers: authHeaders(),
+    success(res) {
+      alert(res.message);
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "index.html";
+    },
+    error(xhr) {
+      showProfileFeedback(
+        xhr.responseJSON?.message || "Failed to delete account",
+        "danger",
+      );
     },
   });
 });
@@ -1631,8 +1787,14 @@ $(document).ready(function () {
   }
 
   $(".sidebar .nav-link").on("click", function (e) {
+    const page = $(this).data("page");
+
+    if (!page) {
+      return;
+    }
+
     e.preventDefault();
-    openDashboardPage($(this).data("page"));
+    openDashboardPage(page);
   });
 
   if (window.location.pathname.endsWith("admin-dashboard.html")) {

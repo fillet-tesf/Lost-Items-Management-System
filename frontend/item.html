@@ -87,6 +87,8 @@
             const image = item.image_url
                 ? window.location.origin + item.image_url
                 : "https://via.placeholder.com/800x420?text=Item";
+            const isAdmin = Boolean(user && user.role === "admin");
+            const isOwner = Boolean(token && user && user.id === item.user_id);
 
             const badge = item.item_type === "lost"
                 ? '<span class="badge bg-danger">Lost Item</span>'
@@ -94,10 +96,14 @@
 
             let actions = "";
 
-            if (token && user && user.id === item.user_id) {
+            if (isOwner) {
                 actions = `
                     <a href="edit-item.html?id=${item.id}" class="btn btn-warning">Edit</a>
                     <button id="deleteBtn" class="btn btn-danger">Delete</button>
+                `;
+            } else if (isAdmin) {
+                actions = `
+                    <button id="deleteBtn" class="btn btn-danger">Delete Item</button>
                 `;
             } else if (token && user && user.id !== item.user_id) {
                 actions = `
@@ -187,8 +193,13 @@
                 method: "DELETE",
                 headers: authHeaders(),
                 success() {
-                    alert("Item deleted");
-                    window.location.href = "user-dashboard.html";
+                    alert("Item deleted successfully");
+                    window.location.href = user?.role === "admin"
+                        ? "admin-dashboard.html"
+                        : "user-dashboard.html";
+                },
+                error(xhr) {
+                    alert(xhr.responseJSON?.message || "Failed to delete item");
                 }
             });
         });

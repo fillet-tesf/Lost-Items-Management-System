@@ -11,6 +11,7 @@ const authMiddleware = require("./authMiddleware");
 
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 
 // Storage config
 const storage = multer.diskStorage({
@@ -135,8 +136,12 @@ function calculateMatchConfidence(lostItem, foundItem) {
   score += getDateScore(lostItem, foundItem);
 
   if (
-    String(lostItem.title || "").trim().toLowerCase() ===
-    String(foundItem.title || "").trim().toLowerCase()
+    String(lostItem.title || "")
+      .trim()
+      .toLowerCase() ===
+    String(foundItem.title || "")
+      .trim()
+      .toLowerCase()
   ) {
     score += 10;
   }
@@ -191,37 +196,41 @@ async function createMatchIfNeeded(lostItem, foundItem, proposedBy) {
   return true;
 }
 
-async function generateMatchesForItem(itemId, proposedBy) {
-  const items = await queryAsync(
-    `SELECT
-       i.id,
-       i.user_id,
-       i.item_type,
-       i.title,
-       i.description,
-       i.category_id,
-       i.location_id,
-       i.lost_date,
-       i.found_date,
-       s.status_name
-     FROM items i
-     JOIN item_statuses s ON i.item_status_id = s.id
-     WHERE i.id = ?`,
-    [itemId],
+async function reconcileBestMatchForFoundItem(foundItemId, proposedBy) {
+  const foundItem = await getItemById(foundItemId);
+
+  if (
+    !foundItem ||
+    foundItem.item_type !== "found" ||
+    ["deleted", "rejected", "claimed", "returned"].includes(
+      foundItem.status_name,
+    )
+  ) {
+    return { created: false };
+  }
+
+  const existingMatches = await queryAsync(
+    `SELECT id, lost_item_id, match_status
+     FROM matches
+     WHERE found_item_id = ?`,
+    [foundItem.id],
   );
 
-  if (items.length === 0) {
-    return { createdCount: 0 };
+  if (
+    existingMatches.some((match) =>
+      ["confirmed", "claimed"].includes(match.match_status),
+    )
+  ) {
+    return { created: false };
   }
 
-  const currentItem = items[0];
+  const rejectedLostItemIds = new Set(
+    existingMatches
+      .filter((match) => match.match_status === "rejected")
+      .map((match) => String(match.lost_item_id)),
+  );
 
-  if (["deleted", "rejected"].includes(currentItem.status_name)) {
-    return { createdCount: 0 };
-  }
-
-  const targetType = currentItem.item_type === "lost" ? "found" : "lost";
-  const candidates = await queryAsync(
+  const lostItems = await queryAsync(
     `SELECT
        i.id,
        i.user_id,
@@ -231,28 +240,116 @@ async function generateMatchesForItem(itemId, proposedBy) {
        i.category_id,
        i.location_id,
        i.lost_date,
-       i.found_date,
-       s.status_name
+       i.found_date
      FROM items i
      JOIN item_statuses s ON i.item_status_id = s.id
-     WHERE i.item_type = ?
+     WHERE i.item_type = 'lost'
        AND i.category_id = ?
        AND i.user_id != ?
-       AND i.id != ?
-       AND s.status_name NOT IN ('deleted', 'rejected')`,
-    [targetType, currentItem.category_id, currentItem.user_id, currentItem.id],
+       AND s.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')`,
+    [foundItem.category_id, foundItem.user_id],
   );
+
+  const candidates = lostItems
+    .filter((lostItem) => !rejectedLostItemIds.has(String(lostItem.id)))
+    .map((lostItem) => ({
+      lostItem,
+      confidence_score: calculateMatchConfidence(lostItem, foundItem),
+    }))
+    .filter((candidate) => candidate.confidence_score >= MATCH_SCORE_THRESHOLD);
+
+  const bestCandidate = chooseBestScoredCandidate(candidates);
+  const proposedMatches = existingMatches.filter(
+    (match) => match.match_status === "proposed",
+  );
+
+  if (!bestCandidate) {
+    await deleteMatchSuggestions(proposedMatches.map((match) => match.id));
+    return { created: false };
+  }
+
+  const retainedMatch = proposedMatches.find(
+    (match) => Number(match.lost_item_id) === Number(bestCandidate.lostItem.id),
+  );
+  const staleMatchIds = proposedMatches
+    .filter(
+      (match) =>
+        Number(match.lost_item_id) !== Number(bestCandidate.lostItem.id),
+    )
+    .map((match) => match.id);
+
+  await deleteMatchSuggestions(staleMatchIds);
+
+  if (retainedMatch) {
+    await queryAsync(
+      `UPDATE matches
+       SET confidence_score = ?,
+           proposed_by = ?
+       WHERE id = ?`,
+      [bestCandidate.confidence_score, proposedBy, retainedMatch.id],
+    );
+
+    return { created: false };
+  }
+
+  const created = await createMatchIfNeeded(
+    bestCandidate.lostItem,
+    foundItem,
+    proposedBy,
+  );
+
+  return { created };
+}
+
+async function generateMatchesForItem(itemId, proposedBy) {
+  const currentItem = await getItemById(itemId);
+
+  if (!currentItem) {
+    return { createdCount: 0 };
+  }
+
+  if (
+    ["deleted", "rejected", "claimed", "returned"].includes(
+      currentItem.status_name,
+    )
+  ) {
+    return { createdCount: 0 };
+  }
 
   let createdCount = 0;
 
-  for (const candidate of candidates) {
-    const lostItem = currentItem.item_type === "lost" ? currentItem : candidate;
-    const foundItem =
-      currentItem.item_type === "found" ? currentItem : candidate;
+  if (currentItem.item_type === "found") {
+    const result = await reconcileBestMatchForFoundItem(
+      currentItem.id,
+      proposedBy,
+    );
 
-    const created = await createMatchIfNeeded(lostItem, foundItem, proposedBy);
+    if (result.created) {
+      createdCount += 1;
+    }
 
-    if (created) {
+    return { createdCount };
+  }
+
+  const candidateFoundItems = await queryAsync(
+    `SELECT i.id
+     FROM items i
+     JOIN item_statuses s ON i.item_status_id = s.id
+     WHERE i.item_type = 'found'
+       AND i.category_id = ?
+       AND i.user_id != ?
+       AND i.id != ?
+       AND s.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')`,
+    [currentItem.category_id, currentItem.user_id, currentItem.id],
+  );
+
+  for (const candidate of candidateFoundItems) {
+    const result = await reconcileBestMatchForFoundItem(
+      candidate.id,
+      proposedBy,
+    );
+
+    if (result.created) {
       createdCount += 1;
     }
   }
@@ -273,6 +370,110 @@ function getPaginationParams(query, defaultLimit = 9, maxLimit = 50) {
     offset: (page - 1) * limit,
     enabled: Object.prototype.hasOwnProperty.call(query, "page"),
   };
+}
+
+async function getStatusIdByName(statusName) {
+  const results = await queryAsync(
+    "SELECT id FROM item_statuses WHERE status_name = ? LIMIT 1",
+    [statusName],
+  );
+
+  return results[0]?.id || null;
+}
+
+function getAbsoluteUploadPath(imageUrl) {
+  if (!imageUrl) {
+    return null;
+  }
+
+  const normalizedPath = String(imageUrl).replace(/^\/+/, "");
+  return path.join(__dirname, "..", normalizedPath);
+}
+
+async function removeItemImage(imageUrl) {
+  const absolutePath = getAbsoluteUploadPath(imageUrl);
+
+  if (!absolutePath) {
+    return;
+  }
+
+  try {
+    await fs.promises.unlink(absolutePath);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.error(`Failed to remove image file ${absolutePath}:`, error);
+    }
+  }
+}
+
+async function deleteRowsByIds(tableName, columnName, ids) {
+  if (!ids.length) {
+    return;
+  }
+
+  const placeholders = ids.map(() => "?").join(", ");
+  await queryAsync(
+    `DELETE FROM ${tableName} WHERE ${columnName} IN (${placeholders})`,
+    ids,
+  );
+}
+
+function chooseBestScoredCandidate(candidates) {
+  if (!candidates.length) {
+    return null;
+  }
+
+  const bestScore = Math.max(
+    ...candidates.map((candidate) => Number(candidate.confidence_score)),
+  );
+  const tiedCandidates = candidates.filter(
+    (candidate) => Number(candidate.confidence_score) === bestScore,
+  );
+
+  return tiedCandidates[Math.floor(Math.random() * tiedCandidates.length)];
+}
+
+async function getItemById(itemId) {
+  const items = await queryAsync(
+    `SELECT
+       i.id,
+       i.user_id,
+       i.item_type,
+       i.title,
+       i.description,
+       i.category_id,
+       i.location_id,
+       i.lost_date,
+       i.found_date,
+       i.image_url,
+       s.status_name
+     FROM items i
+     JOIN item_statuses s ON i.item_status_id = s.id
+     WHERE i.id = ?`,
+    [itemId],
+  );
+
+  return items[0] || null;
+}
+
+async function deleteMatchSuggestions(matchIds) {
+  if (!matchIds.length) {
+    return;
+  }
+
+  const placeholders = matchIds.map(() => "?").join(", ");
+
+  await queryAsync(
+    `DELETE FROM notifications
+     WHERE related_match_id IN (${placeholders})`,
+    matchIds,
+  );
+
+  await queryAsync(
+    `DELETE FROM matches
+     WHERE id IN (${placeholders})`,
+    matchIds,
+  );
 }
 
 async function ensureUserStatsRow(userId) {
@@ -462,13 +663,29 @@ async function markClaimCompletedIfReady(claimId) {
   }
 
   if (context.delivered_confirmed && context.received_confirmed) {
+    const claimedStatusId = await getStatusIdByName("claimed");
+    const returnedStatusId = await getStatusIdByName("returned");
+
     await queryAsync(
       "UPDATE item_claims SET status = 'completed' WHERE id = ?",
       [claimId],
     );
-    await queryAsync("UPDATE matches SET match_status = 'claimed' WHERE id = ?", [
-      context.match_id,
-    ]);
+    await queryAsync(
+      "UPDATE matches SET match_status = 'claimed' WHERE id = ?",
+      [context.match_id],
+    );
+    if (claimedStatusId) {
+      await queryAsync("UPDATE items SET item_status_id = ? WHERE id = ?", [
+        claimedStatusId,
+        context.found_item_id,
+      ]);
+    }
+    if (returnedStatusId) {
+      await queryAsync("UPDATE items SET item_status_id = ? WHERE id = ?", [
+        returnedStatusId,
+        context.lost_item_id,
+      ]);
+    }
     await adjustUserCoins(
       context.found_owner_id,
       20,
@@ -553,8 +770,10 @@ app.get("/", (req, res) => {
 
 app.get("/home-items", (req, res) => {
   const sql = `
-    SELECT *
+    SELECT items.*
     FROM items
+    JOIN item_statuses ON items.item_status_id = item_statuses.id
+    WHERE item_statuses.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')
     ORDER BY RAND()
     LIMIT 6
   `;
@@ -584,6 +803,7 @@ app.get("/my-items", authMiddleware, (req, res) => {
     JOIN locations ON items.location_id = locations.id
     JOIN item_statuses ON items.item_status_id = item_statuses.id
     WHERE items.user_id = ?
+      AND item_statuses.status_name NOT IN ('deleted', 'claimed', 'returned')
     ORDER BY items.created_at DESC
   `;
 
@@ -594,6 +814,39 @@ app.get("/my-items", authMiddleware, (req, res) => {
 
     res.json(results);
   });
+});
+
+app.get("/my-claimed-items", authMiddleware, async (req, res) => {
+  try {
+    const claimedItems = await queryAsync(
+      `SELECT
+         ic.id AS claim_id,
+         ic.created_at,
+         ic.status AS claim_status,
+         found.id AS found_item_id,
+         found.title AS found_title,
+         found.image_url AS found_image_url,
+         lost.id AS lost_item_id,
+         lost.title AS lost_title,
+         finder.full_name AS finder_name,
+         claimant.full_name AS claimant_name
+       FROM item_claims ic
+       JOIN items found ON ic.item_id = found.id
+       JOIN matches m ON m.found_item_id = found.id
+       JOIN items lost ON m.lost_item_id = lost.id
+        AND lost.user_id = ic.claimant_id
+       JOIN users finder ON finder.id = found.user_id
+       JOIN users claimant ON claimant.id = ic.claimant_id
+       WHERE ic.status = 'completed'
+         AND (ic.claimant_id = ? OR found.user_id = ?)
+       ORDER BY ic.created_at DESC`,
+      [req.user.userId, req.user.userId],
+    );
+
+    res.json(claimedItems);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch claimed items" });
+  }
 });
 
 app.get("/profile", authMiddleware, (req, res) => {
@@ -630,10 +883,24 @@ app.get("/profile", authMiddleware, (req, res) => {
 
 app.put("/profile", authMiddleware, async (req, res) => {
   try {
-    const { full_name, email, phone } = req.body;
+    const full_name = String(req.body.full_name || "").trim();
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+    const phone = String(req.body.phone || "").trim();
 
     if (!full_name || !email || !phone) {
-      return res.status(400).json({ message: "All profile fields are required" });
+      return res
+        .status(400)
+        .json({ message: "All profile fields are required" });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: "Enter a valid email address" });
+    }
+
+    if (phone.length < 7) {
+      return res.status(400).json({ message: "Enter a valid phone number" });
     }
 
     await queryAsync(
@@ -655,6 +922,114 @@ app.put("/profile", authMiddleware, async (req, res) => {
   }
 });
 
+app.delete("/profile", authMiddleware, async (req, res) => {
+  if (req.user.role === "admin") {
+    return res
+      .status(403)
+      .json({ message: "Admin accounts cannot be deleted here" });
+  }
+
+  const userId = req.user.userId;
+
+  try {
+    const ownedItems = await queryAsync(
+      "SELECT id, image_url FROM items WHERE user_id = ?",
+      [userId],
+    );
+    const ownedItemIds = ownedItems.map((item) => item.id);
+    const matchRows = ownedItemIds.length
+      ? await queryAsync(
+          `SELECT id
+           FROM matches
+           WHERE lost_item_id IN (${ownedItemIds.map(() => "?").join(", ")})
+              OR found_item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
+          [...ownedItemIds, ...ownedItemIds],
+        )
+      : [];
+    const matchIds = matchRows.map((match) => match.id);
+
+    await queryAsync("START TRANSACTION");
+
+    await queryAsync(
+      `DELETE FROM notifications
+       WHERE user_id = ?
+          OR related_item_id IN (${ownedItemIds.length ? ownedItemIds.map(() => "?").join(", ") : "NULL"})
+          OR related_match_id IN (${matchIds.length ? matchIds.map(() => "?").join(", ") : "NULL"})`,
+      [userId, ...ownedItemIds, ...matchIds],
+    );
+
+    if (ownedItemIds.length) {
+      await queryAsync(
+        `DELETE FROM reported_items
+         WHERE reported_by = ?
+            OR item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
+        [userId, ...ownedItemIds],
+      );
+      await queryAsync(
+        `DELETE FROM item_history
+         WHERE user_id = ?
+            OR item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
+        [userId, ...ownedItemIds],
+      );
+      await queryAsync(
+        `DELETE FROM item_claims
+         WHERE claimant_id = ?
+            OR item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
+        [userId, ...ownedItemIds],
+      );
+      await queryAsync(
+        `DELETE FROM matches
+         WHERE lost_item_id IN (${ownedItemIds.map(() => "?").join(", ")})
+            OR found_item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
+        [...ownedItemIds, ...ownedItemIds],
+      );
+      await queryAsync(
+        `DELETE FROM items
+         WHERE user_id = ?`,
+        [userId],
+      );
+    } else {
+      await queryAsync("DELETE FROM item_claims WHERE claimant_id = ?", [
+        userId,
+      ]);
+    }
+
+    await queryAsync(
+      "DELETE FROM user_reports WHERE reported_by = ? OR reported_user_id = ?",
+      [userId, userId],
+    );
+    await queryAsync(
+      "DELETE FROM user_ratings WHERE from_user = ? OR to_user = ?",
+      [userId, userId],
+    );
+    await queryAsync(
+      "DELETE FROM payment_requests WHERE user_id = ? OR admin_id = ?",
+      [userId, userId],
+    );
+    await queryAsync("DELETE FROM coin_transactions WHERE user_id = ?", [
+      userId,
+    ]);
+    await queryAsync("DELETE FROM user_stats WHERE user_id = ?", [userId]);
+    await queryAsync("DELETE FROM users WHERE id = ?", [userId]);
+
+    await queryAsync("COMMIT");
+
+    for (const item of ownedItems) {
+      await removeItemImage(item.image_url);
+    }
+
+    res.json({ message: "Account deleted successfully" });
+  } catch (error) {
+    try {
+      await queryAsync("ROLLBACK");
+    } catch (rollbackError) {
+      console.error("Failed to rollback profile deletion:", rollbackError);
+    }
+
+    res.status(500).json({ message: "Failed to delete account" });
+  }
+});
+
 app.get("/user/dashboard-summary", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -665,7 +1040,7 @@ app.get("/user/dashboard-summary", authMiddleware, async (req, res) => {
          SUM(CASE WHEN item_statuses.status_name = 'pending' THEN 1 ELSE 0 END) AS pending_items
        FROM items
        JOIN item_statuses ON items.item_status_id = item_statuses.id
-       WHERE items.user_id = ?
+      WHERE items.user_id = ?
          AND item_statuses.status_name != 'deleted'`,
       [userId],
     );
@@ -708,6 +1083,7 @@ app.get("/user/dashboard-summary", authMiddleware, async (req, res) => {
        JOIN locations ON items.location_id = locations.id
        JOIN item_statuses ON items.item_status_id = item_statuses.id
        WHERE items.user_id = ?
+         AND item_statuses.status_name NOT IN ('deleted', 'claimed', 'returned')
        ORDER BY items.created_at DESC
        LIMIT 5`,
       [userId],
@@ -752,7 +1128,7 @@ app.get("/items", (req, res) => {
     JOIN locations ON items.location_id = locations.id
     JOIN item_statuses ON items.item_status_id = item_statuses.id
     JOIN users ON items.user_id = users.id
-    WHERE item_statuses.status_name != 'deleted'
+    WHERE item_statuses.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')
    `;
 
   const params = [];
@@ -924,22 +1300,26 @@ app.post("/signup", (req, res) => {
       VALUES (?, ?, ?, ?)
     `;
 
-    db.query(sql, [fullName, email, phone, hashedPassword], async (err, result) => {
-      if (err) {
-        if (err.code === "ER_DUP_ENTRY") {
-          return res.status(409).json({ message: "Email already exists" });
+    db.query(
+      sql,
+      [fullName, email, phone, hashedPassword],
+      async (err, result) => {
+        if (err) {
+          if (err.code === "ER_DUP_ENTRY") {
+            return res.status(409).json({ message: "Email already exists" });
+          }
+          return res.status(500).json({ message: "Database error" });
         }
-        return res.status(500).json({ message: "Database error" });
-      }
 
-      try {
-        await ensureUserStatsRow(result.insertId);
-      } catch (statsError) {
-        console.error("Failed to initialize user stats:", statsError);
-      }
+        try {
+          await ensureUserStatsRow(result.insertId);
+        } catch (statsError) {
+          console.error("Failed to initialize user stats:", statsError);
+        }
 
-      res.status(201).json({ message: "User registered successfully" });
-    });
+        res.status(201).json({ message: "User registered successfully" });
+      },
+    );
   });
 });
 
@@ -1052,7 +1432,10 @@ app.post("/items", authMiddleware, upload.single("image"), async (req, res) => {
     let matchesFound = 0;
 
     try {
-      const matchResult = await generateMatchesForItem(result.insertId, user_id);
+      const matchResult = await generateMatchesForItem(
+        result.insertId,
+        user_id,
+      );
       matchesFound = matchResult.createdCount;
     } catch (matchError) {
       console.error("Match generation failed:", matchError);
@@ -1136,7 +1519,33 @@ app.get("/matches", authMiddleware, async (req, res) => {
       [req.user.userId],
     );
 
-    res.json(matches);
+    const uniqueMatches = Array.from(
+      matches
+        .reduce((accumulator, match) => {
+          const key = String(match.found_item_id);
+          const existingMatch = accumulator.get(key);
+
+          if (!existingMatch) {
+            accumulator.set(key, match);
+            return accumulator;
+          }
+
+          const currentScore = Number(match.confidence_score || 0);
+          const existingScore = Number(existingMatch.confidence_score || 0);
+
+          if (
+            currentScore > existingScore ||
+            (currentScore === existingScore && Math.random() >= 0.5)
+          ) {
+            accumulator.set(key, match);
+          }
+
+          return accumulator;
+        }, new Map())
+        .values(),
+    );
+
+    res.json(uniqueMatches);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch matches" });
   }
@@ -1158,7 +1567,7 @@ app.get("/my-lost-items", authMiddleware, async (req, res) => {
        JOIN item_statuses ON items.item_status_id = item_statuses.id
        WHERE items.user_id = ?
          AND items.item_type = 'lost'
-         AND item_statuses.status_name NOT IN ('deleted', 'rejected')
+         AND item_statuses.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')
        ORDER BY items.created_at DESC`,
       [req.user.userId],
     );
@@ -1197,7 +1606,9 @@ app.post("/matches/:id/request-contact", authMiddleware, async (req, res) => {
     const match = results[0];
 
     if (match.lost_owner_id !== req.user.userId) {
-      return res.status(403).json({ message: "You cannot request this contact" });
+      return res
+        .status(403)
+        .json({ message: "You cannot request this contact" });
     }
 
     if (match.match_status !== "proposed") {
@@ -1206,9 +1617,10 @@ app.post("/matches/:id/request-contact", authMiddleware, async (req, res) => {
       });
     }
 
-    await queryAsync("UPDATE matches SET match_status = 'confirmed' WHERE id = ?", [
-      req.params.id,
-    ]);
+    await queryAsync(
+      "UPDATE matches SET match_status = 'confirmed' WHERE id = ?",
+      [req.params.id],
+    );
     await createOrUpdateClaim(match.found_item_id, req.user.userId, "pending");
     await recalculateUserStats(req.user.userId);
 
@@ -1252,9 +1664,10 @@ app.post("/matches/:id/reject", authMiddleware, async (req, res) => {
       });
     }
 
-    await queryAsync("UPDATE matches SET match_status = 'rejected' WHERE id = ?", [
-      req.params.id,
-    ]);
+    await queryAsync(
+      "UPDATE matches SET match_status = 'rejected' WHERE id = ?",
+      [req.params.id],
+    );
 
     res.json({ message: "Match dismissed" });
   } catch (error) {
@@ -1264,6 +1677,10 @@ app.post("/matches/:id/reject", authMiddleware, async (req, res) => {
 
 app.post("/items/:id/suggest-match", authMiddleware, async (req, res) => {
   try {
+    if (req.user.role === "admin") {
+      return res.status(403).json({ message: "Admins cannot create claims" });
+    }
+
     const { lost_item_id } = req.body;
 
     if (!lost_item_id) {
@@ -1279,7 +1696,8 @@ app.post("/items/:id/suggest-match", authMiddleware, async (req, res) => {
 
     if (!lostItemCount.total) {
       return res.status(400).json({
-        message: "You need at least one lost item report before claiming a found item",
+        message:
+          "You need at least one lost item report before claiming a found item",
       });
     }
 
@@ -1298,7 +1716,7 @@ app.post("/items/:id/suggest-match", authMiddleware, async (req, res) => {
        JOIN item_statuses ON items.item_status_id = item_statuses.id
        WHERE items.id = ?
          AND items.item_type = 'found'
-         AND item_statuses.status_name NOT IN ('deleted', 'rejected')`,
+         AND item_statuses.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')`,
       [req.params.id],
     );
 
@@ -1327,7 +1745,7 @@ app.post("/items/:id/suggest-match", authMiddleware, async (req, res) => {
        WHERE items.id = ?
          AND items.user_id = ?
          AND items.item_type = 'lost'
-         AND item_statuses.status_name NOT IN ('deleted', 'rejected')`,
+         AND item_statuses.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')`,
       [lost_item_id, req.user.userId],
     );
 
@@ -1337,7 +1755,8 @@ app.post("/items/:id/suggest-match", authMiddleware, async (req, res) => {
 
     if (Number(lostItem.category_id) !== Number(foundItem.category_id)) {
       return res.status(400).json({
-        message: "Your lost item must be in the same category as the found item",
+        message:
+          "Your lost item must be in the same category as the found item",
       });
     }
 
@@ -1587,7 +2006,9 @@ app.post(
         notification.title !== CONTACT_REQUEST_TITLE ||
         notification.found_owner_id !== req.user.userId
       ) {
-        return res.status(403).json({ message: "You cannot respond to this request" });
+        return res
+          .status(403)
+          .json({ message: "You cannot respond to this request" });
       }
 
       if (notification.claim_status !== "pending") {
@@ -1641,13 +2062,15 @@ app.post(
           notification.related_match_id,
         );
       } else {
-        await queryAsync("UPDATE matches SET match_status = 'rejected' WHERE id = ?", [
-          notification.related_match_id,
-        ]);
+        await queryAsync(
+          "UPDATE matches SET match_status = 'rejected' WHERE id = ?",
+          [notification.related_match_id],
+        );
         if (notification.claim_id) {
-          await queryAsync("UPDATE item_claims SET status = 'rejected' WHERE id = ?", [
-            notification.claim_id,
-          ]);
+          await queryAsync(
+            "UPDATE item_claims SET status = 'rejected' WHERE id = ?",
+            [notification.claim_id],
+          );
         } else {
           await createOrUpdateClaim(
             notification.found_item_id,
@@ -1715,7 +2138,19 @@ app.get("/claims/incoming", authMiddleware, async (req, res) => {
       [req.user.userId],
     );
 
-    res.json(claims);
+    const uniqueClaims = Array.from(
+      claims
+        .reduce((accumulator, claim) => {
+          if (!accumulator.has(claim.claim_id)) {
+            accumulator.set(claim.claim_id, claim);
+          }
+
+          return accumulator;
+        }, new Map())
+        .values(),
+    );
+
+    res.json(uniqueClaims);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch incoming claims" });
   }
@@ -1731,15 +2166,21 @@ app.post("/claims/:id/share-contact", authMiddleware, async (req, res) => {
     }
 
     if (Number(claim.found_owner_id) !== Number(req.user.userId)) {
-      return res.status(403).json({ message: "Only the finder can share contact" });
+      return res
+        .status(403)
+        .json({ message: "Only the finder can share contact" });
     }
 
     if (claim.claim_status !== "pending") {
-      return res.status(409).json({ message: "This claim has already moved forward" });
+      return res
+        .status(409)
+        .json({ message: "This claim has already moved forward" });
     }
 
     if (!share_phone && !share_email) {
-      return res.status(400).json({ message: "Choose at least one contact option to share" });
+      return res
+        .status(400)
+        .json({ message: "Choose at least one contact option to share" });
     }
 
     const [finder] = await queryAsync(
@@ -1785,11 +2226,15 @@ app.post("/claims/:id/confirm-delivered", authMiddleware, async (req, res) => {
     }
 
     if (Number(claim.found_owner_id) !== Number(req.user.userId)) {
-      return res.status(403).json({ message: "Only the finder can confirm delivery" });
+      return res
+        .status(403)
+        .json({ message: "Only the finder can confirm delivery" });
     }
 
     if (!["contact_shared", "in_progress"].includes(claim.claim_status)) {
-      return res.status(409).json({ message: "This claim cannot be updated right now" });
+      return res
+        .status(409)
+        .json({ message: "This claim cannot be updated right now" });
     }
 
     await queryAsync(
@@ -1811,9 +2256,10 @@ app.post("/claims/:id/confirm-delivered", authMiddleware, async (req, res) => {
     const updatedClaim = await markClaimCompletedIfReady(req.params.id);
 
     res.json({
-      message: updatedClaim?.claim_status === "completed"
-        ? "Claim completed successfully"
-        : "Delivery confirmation saved",
+      message:
+        updatedClaim?.claim_status === "completed"
+          ? "Claim completed successfully"
+          : "Delivery confirmation saved",
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to confirm delivery" });
@@ -1829,11 +2275,15 @@ app.post("/claims/:id/confirm-received", authMiddleware, async (req, res) => {
     }
 
     if (Number(claim.lost_owner_id) !== Number(req.user.userId)) {
-      return res.status(403).json({ message: "Only the claimant can confirm receipt" });
+      return res
+        .status(403)
+        .json({ message: "Only the claimant can confirm receipt" });
     }
 
     if (!["contact_shared", "in_progress"].includes(claim.claim_status)) {
-      return res.status(409).json({ message: "This claim cannot be updated right now" });
+      return res
+        .status(409)
+        .json({ message: "This claim cannot be updated right now" });
     }
 
     await queryAsync(
@@ -1855,9 +2305,10 @@ app.post("/claims/:id/confirm-received", authMiddleware, async (req, res) => {
     const updatedClaim = await markClaimCompletedIfReady(req.params.id);
 
     res.json({
-      message: updatedClaim?.claim_status === "completed"
-        ? "Claim completed successfully"
-        : "Receipt confirmation saved",
+      message:
+        updatedClaim?.claim_status === "completed"
+          ? "Claim completed successfully"
+          : "Receipt confirmation saved",
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to confirm receipt" });
@@ -1885,12 +2336,14 @@ app.post("/claims/:id/reject", authMiddleware, async (req, res) => {
       return res.status(409).json({ message: "This claim is already closed" });
     }
 
-    await queryAsync("UPDATE item_claims SET status = 'rejected' WHERE id = ?", [
-      req.params.id,
-    ]);
-    await queryAsync("UPDATE matches SET match_status = 'rejected' WHERE id = ?", [
-      claim.match_id,
-    ]);
+    await queryAsync(
+      "UPDATE item_claims SET status = 'rejected' WHERE id = ?",
+      [req.params.id],
+    );
+    await queryAsync(
+      "UPDATE matches SET match_status = 'rejected' WHERE id = ?",
+      [claim.match_id],
+    );
 
     await createNotification(
       actorIsClaimant ? claim.found_owner_id : claim.lost_owner_id,
@@ -1920,8 +2373,14 @@ app.post("/claims/:id/report-user", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Claim not found" });
     }
 
-    if (!["contact_shared", "in_progress", "completed"].includes(claim.claim_status)) {
-      return res.status(409).json({ message: "You can report a user only after contact sharing" });
+    if (
+      !["contact_shared", "in_progress", "completed"].includes(
+        claim.claim_status,
+      )
+    ) {
+      return res
+        .status(409)
+        .json({ message: "You can report a user only after contact sharing" });
     }
 
     const actorIsClaimant =
@@ -1930,11 +2389,15 @@ app.post("/claims/:id/report-user", authMiddleware, async (req, res) => {
       Number(claim.found_owner_id) === Number(req.user.userId);
 
     if (!actorIsClaimant && !actorIsFinder) {
-      return res.status(403).json({ message: "You cannot report for this claim" });
+      return res
+        .status(403)
+        .json({ message: "You cannot report for this claim" });
     }
 
     if (!reason || !description) {
-      return res.status(400).json({ message: "Reason and description are required" });
+      return res
+        .status(400)
+        .json({ message: "Reason and description are required" });
     }
 
     const reportedUserId = actorIsClaimant
@@ -1965,7 +2428,9 @@ app.post("/claims/:id/rate-user", authMiddleware, async (req, res) => {
     }
 
     if (claim.claim_status !== "completed") {
-      return res.status(409).json({ message: "Ratings are available only after completion" });
+      return res
+        .status(409)
+        .json({ message: "Ratings are available only after completion" });
     }
 
     const actorIsClaimant =
@@ -2016,7 +2481,7 @@ app.put("/items/:id", authMiddleware, (req, res) => {
 
   // Step 1: fetch the item
   db.query(
-    "SELECT user_id FROM items WHERE id = ?",
+    "SELECT user_id, image_url FROM items WHERE id = ?",
     [itemId],
     (err, results) => {
       if (err) {
@@ -2028,6 +2493,7 @@ app.put("/items/:id", authMiddleware, (req, res) => {
       }
 
       const itemOwnerId = results[0].user_id;
+      const itemImageUrl = results[0].image_url;
 
       // Step 2: permission check
       if (itemOwnerId !== userId && role !== "admin") {
@@ -2073,59 +2539,85 @@ app.put("/items/:id", authMiddleware, (req, res) => {
 
 // DELETE ITEM (owner or admin only)
 
-app.delete("/items/:id", authMiddleware, (req, res) => {
+app.delete("/items/:id", authMiddleware, async (req, res) => {
   const itemId = req.params.id;
   const userId = req.user.userId;
   const role = req.user.role;
 
-  // Step 1: fetch item owner
-  db.query(
-    "SELECT user_id FROM items WHERE id = ?",
-    [itemId],
-    (err, results) => {
-      if (err) {
-        return res.status(500).json({ message: "Database error" });
-      }
-
-      if (results.length === 0) {
-        return res.status(404).json({ message: "Item not found" });
-      }
-
-      const itemOwnerId = results[0].user_id;
-
-      // Step 2: permission check
-      if (itemOwnerId !== userId && role !== "admin") {
-        return res.status(403).json({
-          message: "You are not allowed to delete this item",
-        });
-      }
-
-      // Step 3: delete item
-      db.query("DELETE FROM items WHERE id = ?", [itemId], (err) => {
-        if (err) {
-          return res.status(500).json({ message: "Failed to delete item" });
-        }
-
-        // ✅ LOG ADMIN ACTION (only if admin)
-        if (role === "admin") {
-          db.query(
-            "INSERT INTO admin_actions (admin_id, action_type, target_id, target_type, details) VALUES (?, 'delete_item', ?, 'item', ?)",
-            [userId, itemId, `Admin deleted item ID ${itemId}`],
-          );
-
-          // ✅ ITEM HISTORY
-          db.query(
-            "INSERT INTO item_history (item_id, user_id, action, old_value, new_value) VALUES (?, ?, 'deleted', NULL, 'item removed')",
-            [itemId, userId],
-          );
-        }
-
-        res.json({ message: "Item deleted successfully" });
-      });
-    },
+  console.log(
+    `[DELETE /items/${itemId}] started by user=${userId}, role=${role}`,
   );
-});
 
+  try {
+    const items = await queryAsync(
+      "SELECT user_id, image_url FROM items WHERE id = ?",
+      [itemId],
+    );
+
+    if (!items.length) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    const itemOwnerId = Number(items[0].user_id);
+    const itemImageUrl = items[0].image_url;
+
+    if (itemOwnerId !== Number(userId) && role !== "admin") {
+      return res.status(403).json({
+        message: "You are not allowed to delete this item",
+      });
+    }
+
+    await queryAsync("DELETE FROM items WHERE id = ?", [itemId]);
+    console.log(`[DELETE /items/${itemId}] database delete succeeded`);
+
+    if (itemImageUrl) {
+      console.log(
+        `[DELETE /items/${itemId}] deleting image: ${itemImageUrl}`,
+      );
+    } else {
+      console.log(`[DELETE /items/${itemId}] no image to delete`);
+    }
+
+    try {
+      await removeItemImage(itemImageUrl);
+      console.log(`[DELETE /items/${itemId}] image delete step finished`);
+    } catch (imageError) {
+      console.error(
+        `[DELETE /items/${itemId}] image delete failed:`,
+        imageError,
+      );
+    }
+
+    if (role === "admin") {
+      queryAsync(
+        `INSERT INTO admin_actions (admin_id, action_type, target_id, target_type, details)
+         VALUES (?, 'delete_item', ?, 'item', ?)`,
+        [userId, itemId, `Admin deleted item ID ${itemId}`],
+      ).catch((logError) => {
+        console.error(
+          `[DELETE /items/${itemId}] failed to write admin action:`,
+          logError,
+        );
+      });
+
+      queryAsync(
+        `INSERT INTO item_history (item_id, user_id, action, old_value, new_value)
+         VALUES (?, ?, 'deleted', NULL, 'item removed')`,
+        [itemId, userId],
+      ).catch((historyError) => {
+        console.error(
+          `[DELETE /items/${itemId}] failed to write item history:`,
+          historyError,
+        );
+      });
+    }
+
+    return res.json({ message: "Item deleted successfully" });
+  } catch (error) {
+    console.error(`[DELETE /items/${itemId}] failed:`, error);
+    return res.status(500).json({ message: "Failed to delete item" });
+  }
+});
 // admin item verification
 
 app.post("/admin/items/verify", authMiddleware, (req, res) => {
@@ -2183,6 +2675,10 @@ app.post("/admin/items/verify", authMiddleware, (req, res) => {
 
 app.post("/items/:itemId/report", authMiddleware, async (req, res) => {
   try {
+    if (req.user.role === "admin") {
+      return res.status(403).json({ message: "Admins cannot report items" });
+    }
+
     const itemId = req.params.itemId;
     const reportedBy = req.user.userId;
     const { reason, description } = req.body;
@@ -2198,7 +2694,7 @@ app.post("/items/:itemId/report", authMiddleware, async (req, res) => {
        FROM items
        JOIN item_statuses ON items.item_status_id = item_statuses.id
        WHERE items.id = ?
-         AND item_statuses.status_name NOT IN ('deleted', 'rejected')`,
+         AND item_statuses.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')`,
       [itemId],
     );
 
@@ -2226,7 +2722,9 @@ app.post("/items/:itemId/report", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ message: "You already reported this item" });
+      return res
+        .status(409)
+        .json({ message: "You already reported this item" });
     }
 
     res.status(500).json({ message: "Failed to report item" });
@@ -2272,7 +2770,10 @@ app.get("/admin/reported-items", authMiddleware, async (req, res) => {
   `;
 
   try {
-    const results = await queryAsync(sql, [pagination.limit, pagination.offset]);
+    const results = await queryAsync(sql, [
+      pagination.limit,
+      pagination.offset,
+    ]);
     const [countResult] = await queryAsync(
       "SELECT COUNT(*) AS total FROM reported_items",
     );
@@ -2525,7 +3026,9 @@ app.get("/admin/claims", authMiddleware, async (req, res) => {
          found.title AS found_title,
          lost.id AS lost_item_id,
          lost.title AS lost_title,
+         finder.id AS finder_id,
          finder.full_name AS finder_name,
+         claimant.id AS claimant_id,
          claimant.full_name AS claimant_name
        FROM item_claims ic
        JOIN items found ON ic.item_id = found.id
@@ -2534,10 +3037,22 @@ app.get("/admin/claims", authMiddleware, async (req, res) => {
        JOIN users finder ON finder.id = found.user_id
        JOIN users claimant ON claimant.id = ic.claimant_id
        WHERE ${statusFilter}
-       ORDER BY ic.created_at DESC`,
+      ORDER BY ic.created_at DESC`,
     );
 
-    res.json(claims);
+    const uniqueClaims = Array.from(
+      claims
+        .reduce((accumulator, claim) => {
+          if (!accumulator.has(claim.claim_id)) {
+            accumulator.set(claim.claim_id, claim);
+          }
+
+          return accumulator;
+        }, new Map())
+        .values(),
+    );
+
+    res.json(uniqueClaims);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch claims" });
   }
@@ -2600,83 +3115,89 @@ app.get("/admin/suspicious-users", authMiddleware, async (req, res) => {
   }
 });
 
-app.post("/admin/payment-requests/:id/review", authMiddleware, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ message: "Admin only" });
-  }
-
-  try {
-    const { action, approved_coins } = req.body;
-    const [requestRow] = await queryAsync(
-      "SELECT * FROM payment_requests WHERE id = ?",
-      [req.params.id],
-    );
-
-    if (!requestRow) {
-      return res.status(404).json({ message: "Payment request not found" });
+app.post(
+  "/admin/payment-requests/:id/review",
+  authMiddleware,
+  async (req, res) => {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Admin only" });
     }
 
-    if (requestRow.status !== "pending") {
-      return res.status(409).json({ message: "This request has already been reviewed" });
-    }
-
-    if (!["approve", "reject"].includes(action)) {
-      return res.status(400).json({ message: "Invalid action" });
-    }
-
-    if (action === "approve") {
-      const coinAmount = Number(approved_coins || requestRow.requested_coins);
-
-      await adjustUserCoins(
-        requestRow.user_id,
-        coinAmount,
-        "credit",
-        `Admin approved recharge request #${requestRow.id}`,
+    try {
+      const { action, approved_coins } = req.body;
+      const [requestRow] = await queryAsync(
+        "SELECT * FROM payment_requests WHERE id = ?",
+        [req.params.id],
       );
 
-      await queryAsync(
-        `UPDATE payment_requests
+      if (!requestRow) {
+        return res.status(404).json({ message: "Payment request not found" });
+      }
+
+      if (requestRow.status !== "pending") {
+        return res
+          .status(409)
+          .json({ message: "This request has already been reviewed" });
+      }
+
+      if (!["approve", "reject"].includes(action)) {
+        return res.status(400).json({ message: "Invalid action" });
+      }
+
+      if (action === "approve") {
+        const coinAmount = Number(approved_coins || requestRow.requested_coins);
+
+        await adjustUserCoins(
+          requestRow.user_id,
+          coinAmount,
+          "credit",
+          `Admin approved recharge request #${requestRow.id}`,
+        );
+
+        await queryAsync(
+          `UPDATE payment_requests
          SET status = 'approved',
              admin_id = ?,
              requested_coins = ?,
              reviewed_at = NOW()
          WHERE id = ?`,
-        [req.user.userId, coinAmount, req.params.id],
-      );
-    } else {
-      await queryAsync(
-        `UPDATE payment_requests
+          [req.user.userId, coinAmount, req.params.id],
+        );
+      } else {
+        await queryAsync(
+          `UPDATE payment_requests
          SET status = 'rejected',
              admin_id = ?,
              reviewed_at = NOW()
          WHERE id = ?`,
-        [req.user.userId, req.params.id],
-      );
-    }
+          [req.user.userId, req.params.id],
+        );
+      }
 
-    await queryAsync(
-      `INSERT INTO admin_actions (admin_id, action_type, target_id, target_type, details)
+      await queryAsync(
+        `INSERT INTO admin_actions (admin_id, action_type, target_id, target_type, details)
        VALUES (?, ?, ?, 'user', ?)`,
-      [
-        req.user.userId,
-        action === "approve" ? "approve_payment" : "reject_payment",
-        req.params.id,
-        action === "approve"
-          ? `Approved recharge request with ${approved_coins || requestRow.requested_coins} coins`
-          : "Rejected recharge request",
-      ],
-    );
+        [
+          req.user.userId,
+          action === "approve" ? "approve_payment" : "reject_payment",
+          req.params.id,
+          action === "approve"
+            ? `Approved recharge request with ${approved_coins || requestRow.requested_coins} coins`
+            : "Rejected recharge request",
+        ],
+      );
 
-    res.json({
-      message:
-        action === "approve"
-          ? "Payment request approved"
-          : "Payment request rejected",
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to review payment request" });
-  }
-});
+      res.json({
+        message:
+          action === "approve"
+            ? "Payment request approved"
+            : "Payment request rejected",
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to review payment request" });
+    }
+  },
+);
 
 // admin manage users
 
@@ -2761,7 +3282,10 @@ app.get("/admin/users/:id/details", authMiddleware, async (req, res) => {
       Number(claimChart.completed_claims || 0) +
       Number(claimChart.rejected_claims || 0);
     const successRate = totalResolvedClaims
-      ? Math.round((Number(claimChart.completed_claims || 0) / totalResolvedClaims) * 100)
+      ? Math.round(
+          (Number(claimChart.completed_claims || 0) / totalResolvedClaims) *
+            100,
+        )
       : 0;
 
     res.json({
@@ -2803,3 +3327,4 @@ app.delete("/admin/users/:id", authMiddleware, (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+

@@ -13,20 +13,59 @@
 
 <body>
 
+    <!-- Mobile Toggle Button -->
+    <button class="mobile-toggle" id="mobileToggle">
+        <i class="bi bi-list fs-5"></i>
+    </button>
+
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <div class="d-flex">
 
         <!-- SIDEBAR -->
-        <div class="sidebar p-3">
-            <h4 class="text-white">LIMS</h4>
+        <div class="sidebar p-3" id="sidebar">
+            <h4 class="text-white">
+                <i class="bi bi-shield-check me-2"></i>LIMS
+            </h4>
             <hr class="text-white">
 
             <ul class="nav flex-column">
-                <li class="nav-item"><a class="nav-link active" data-page="user-overview" href="#">Dashboard</a></li>
-                <li class="nav-item"><a class="nav-link" data-page="my-items" href="#">My Items</a></li>
-                <li class="nav-item"><a class="nav-link" data-page="matches" href="#">Matches</a></li>
-                <li class="nav-item"><a class="nav-link" data-page="notifications" href="#">Notifications</a></li>
-                <li class="nav-item"><a class="nav-link" href="wallet.html">Wallet</a></li>
-                <li class="nav-item"><a class="nav-link" data-page="profile" href="#">Profile</a></li>
+                <li class="nav-item">
+                    <a class="nav-link active" data-page="user-overview" href="#">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-page="my-items" href="#">
+                        <i class="bi bi-box-seam"></i> My Items
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-page="claimed-items" href="#">
+                        <i class="bi bi-check2-circle"></i> Claimed Items
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-page="matches" href="#">
+                        <i class="bi bi-arrows-alt-h"></i> Matches
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-page="notifications" href="#">
+                        <i class="bi bi-bell"></i> Notifications
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="wallet.html">
+                        <i class="bi bi-wallet2"></i> Wallet
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-page="profile" href="#">
+                        <i class="bi bi-person-circle"></i> Profile
+                    </a>
+                </li>
             </ul>
         </div>
 
@@ -91,7 +130,44 @@
     </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/dashboard.js"></script>
+
+    <script>
+        $(document).ready(function () {
+            const mobileToggle = $('#mobileToggle');
+            const sidebar = $('#sidebar');
+            const overlay = $('#sidebarOverlay');
+
+            // Toggle sidebar on mobile
+            mobileToggle.on('click', function () {
+                sidebar.toggleClass('active');
+                overlay.toggleClass('active');
+            });
+
+            // Close sidebar when clicking overlay
+            overlay.on('click', function () {
+                sidebar.removeClass('active');
+                overlay.removeClass('active');
+            });
+
+            // Close sidebar when clicking a nav link on mobile
+            $('.sidebar .nav-link').on('click', function () {
+                if ($(window).width() < 768) {
+                    sidebar.removeClass('active');
+                    overlay.removeClass('active');
+                }
+            });
+
+            // Handle window resize
+            $(window).on('resize', function () {
+                if ($(window).width() >= 768) {
+                    sidebar.removeClass('active');
+                    overlay.removeClass('active');
+                }
+            });
+        });
+    </script>
 
 </body>
 

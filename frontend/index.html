@@ -9,6 +9,9 @@
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
     <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -21,17 +24,25 @@
 
         if (token) {
             const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-            $("#navMenu ul").append(
-                `<li class="nav-item">
-        <a class="nav-link" href="user-dashboard.html">Dashboard</a>
-      </li>
-      <li class="nav-item">
+            const dashboardHref = currentUser.role === "admin"
+                ? "admin-dashboard.html"
+                : "user-dashboard.html";
+
+            let authLinks = `<li class="nav-item">
+        <a class="nav-link" href="${dashboardHref}">Dashboard</a>
+      </li>`;
+
+            if (currentUser.role !== "admin") {
+                authLinks += `<li class="nav-item">
         <a class="nav-link" href="wallet.html">Coins: ${currentUser.coins || 0}</a>
-      </li>
-      <li class="nav-item">
+      </li>`;
+            }
+
+            authLinks += `<li class="nav-item">
         <a class="nav-link" id="logoutBtn" href="#">Logout</a>
-      </li>`
-            );
+      </li>`;
+
+            $("#navMenu ul").append(authLinks);
 
             $("#navMenu a[href='login.html']").parent().remove();
             $("#navMenu a[href='signup.html']").parent().remove();
@@ -53,6 +64,16 @@
 <script>
     $(function () {
         $.get(window.location.origin + "/home-items", function (items) {
+            $("#itemsContainer").empty();
+
+            if (!items.length) {
+                $("#itemsContainer").html(`
+                    <div class="col-12">
+                        <div class="alert alert-light border text-center mb-0">No active items are available right now.</div>
+                    </div>
+                `);
+                return;
+            }
 
             items.forEach(item => {
 
@@ -93,9 +114,11 @@
 <body>
 
     <!-- ========== NAVBAR ========== -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="index.html">LIMS</a>
+            <a class="navbar-brand fw-bold" href="index.html">
+                <i class="bi bi-shield-check me-2"></i>LIMS
+            </a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
                 <span class="navbar-toggler-icon"></span>
@@ -103,11 +126,16 @@
 
             <div class="collapse navbar-collapse" id="navMenu">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link active" href="index.html">Home</a></li>
-                    <li class="nav-item"><a class="nav-link" href="search-results.html?type=lost">Lost Items</a></li>
-                    <li class="nav-item"><a class="nav-link" href="search-results.html?type=found">Found Items</a></li>
-                    <li class="nav-item"><a class="nav-link" href="login.html">Login</a></li>
-                    <li class="nav-item"><a class="nav-link" href="signup.html">Sign Up</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="index.html"><i
+                                class="bi bi-house me-1"></i>Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="search-results.html?type=lost"><i
+                                class="bi bi-search me-1"></i>Lost Items</a></li>
+                    <li class="nav-item"><a class="nav-link" href="search-results.html?type=found"><i
+                                class="bi bi-binoculars me-1"></i>Found Items</a></li>
+                    <li class="nav-item"><a class="nav-link" href="login.html"><i
+                                class="bi bi-box-arrow-in-right me-1"></i>Login</a></li>
+                    <li class="nav-item"><a class="nav-link" href="signup.html"><i
+                                class="bi bi-person-plus me-1"></i>Sign Up</a></li>
                 </ul>
             </div>
         </div>
