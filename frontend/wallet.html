@@ -82,12 +82,33 @@
     </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/ui.js"></script>
     <script>
         const token = localStorage.getItem("token");
         const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
 
         function headers() {
             return { Authorization: "Bearer " + token };
+        }
+
+        function showToast(message, type = "info") {
+            if (window.LIMS_UI && window.LIMS_UI.showToast) {
+                window.LIMS_UI.showToast(message, type);
+                return;
+            }
+            console.log(message);
+        }
+
+        function setButtonLoading($button, label) {
+            if (window.LIMS_UI && window.LIMS_UI.setButtonLoading) {
+                return window.LIMS_UI.setButtonLoading($button, label);
+            }
+            const originalText = $button.text();
+            $button.prop("disabled", true).text(label);
+            return function restore() {
+                $button.prop("disabled", false).text(originalText);
+            };
         }
 
         function loadWallet() {
@@ -137,6 +158,7 @@
         }
 
         $("#submitRecharge").on("click", function () {
+            const restoreButton = setButtonLoading($(this), "Submitting...");
             $.ajax({
                 url: window.location.origin + "/payment-requests",
                 method: "POST",
@@ -148,14 +170,17 @@
                     payment_reference: $("#paymentReference").val()
                 }),
                 success(res) {
-                    alert(res.message);
+                    showToast(res.message, "success");
                     $("#rechargeCoins").val("");
                     $("#paymentMethod").val("");
                     $("#paymentReference").val("");
                     loadWallet();
                 },
                 error(xhr) {
-                    alert(xhr.responseJSON?.message || "Failed to submit request");
+                    showToast(xhr.responseJSON?.message || "Failed to submit request", "error");
+                },
+                complete() {
+                    restoreButton();
                 }
             });
         });

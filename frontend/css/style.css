@@ -480,3 +480,22 @@ body {
 .rounded-3xl {
   border-radius: 20px;
 }
+
+/* ========== CATEGORY FILTER BUTTONS ========== */
+.category-filter {
+  padding: 0.5rem 1.25rem;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.category-filter.active {
+  background: var(--primary-color) !important;
+  color: white !important;
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+}
+
+.category-filter:hover:not(.active) {
+  background: rgba(13, 110, 253, 0.1);
+  transform: translateY(-2px);
+}

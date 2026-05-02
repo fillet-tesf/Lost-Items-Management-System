@@ -27,6 +27,43 @@ const STATUS_BADGES = {
   verified: "success",
 };
 
+function notify(message, type = "info") {
+  if (window.LIMS_UI && window.LIMS_UI.showToast) {
+    window.LIMS_UI.showToast(message, type);
+    return;
+  }
+  console.log(message);
+}
+
+async function confirmAction(message, title = "Confirm Action") {
+  if (window.LIMS_UI && window.LIMS_UI.showConfirm) {
+    return window.LIMS_UI.showConfirm({
+      title,
+      message,
+      confirmText: "Continue",
+      confirmVariant: "danger",
+    });
+  }
+
+  return false;
+}
+
+function setActionLoading($button, label = "Processing...") {
+  if (!$button || !$button.length) {
+    return function noop() {};
+  }
+
+  if (window.LIMS_UI && window.LIMS_UI.setButtonLoading) {
+    return window.LIMS_UI.setButtonLoading($button, label);
+  }
+
+  const originalText = $button.text();
+  $button.prop("disabled", true).text(label);
+  return function restore() {
+    $button.prop("disabled", false).text(originalText);
+  };
+}
+
 function authHeaders(includeJson = false) {
   const headers = { Authorization: "Bearer " + token };
 
@@ -376,6 +413,9 @@ function showProfileFeedback(message, type = "success") {
 }
 
 function loadMyItems() {
+  $("#myItemsTable").html(
+    "<tr><td colspan='5' class='text-center'><div class='spinner-border spinner-border-sm me-2'></div>Loading items...</td></tr>",
+  );
   $.ajax({
     url: window.location.origin + "/my-items",
     method: "GET",
@@ -469,6 +509,11 @@ function loadClaimedItems() {
 }
 
 function loadMatches() {
+  if ($("#matchesList").length) {
+    $("#matchesList").html(
+      "<div class='col-12 text-center py-5 text-muted'><div class='spinner-border'></div><div class='mt-2'>Loading matches...</div></div>",
+    );
+  }
   $.ajax({
     url: window.location.origin + "/matches",
     method: "GET",
@@ -583,6 +628,9 @@ function loadMatches() {
 }
 
 function loadIncomingClaims() {
+  $("#incomingClaimsList").html(
+    "<div class='card dashboard-panel shadow-sm border-0'><div class='card-body text-muted'><div class='spinner-border spinner-border-sm me-2'></div>Loading claims...</div></div>",
+  );
   $.ajax({
     url: window.location.origin + "/claims/incoming",
     method: "GET",
@@ -674,6 +722,9 @@ function loadIncomingClaims() {
 }
 
 function loadNotifications() {
+  $("#notificationsList").html(
+    "<div class='card dashboard-panel shadow-sm border-0'><div class='card-body text-muted'><div class='spinner-border spinner-border-sm me-2'></div>Loading notifications...</div></div>",
+  );
   $.ajax({
     url: window.location.origin + "/notifications",
     method: "GET",
@@ -757,6 +808,9 @@ function loadProfile() {
 }
 
 function loadPendingItems() {
+  $("#pendingItemsTable").html(
+    "<tr><td colspan='6' class='text-center'><div class='spinner-border spinner-border-sm me-2'></div>Loading pending items...</td></tr>",
+  );
   $.ajax({
     url: window.location.origin + "/admin/items/pending",
     method: "GET",
@@ -795,9 +849,13 @@ function loadPendingItems() {
   });
 }
 
-function handleVerification(itemId, action) {
-  if (!confirm(`Are you sure you want to ${action} this item?`)) return;
-
+async function handleVerification(itemId, action, triggerEl) {
+  const approved = await confirmAction(
+    `Are you sure you want to ${action} this item?`,
+    "Review Item",
+  );
+  if (!approved) return;
+  const restoreButton = setActionLoading($(triggerEl), "Processing...");
   $.ajax({
     url: window.location.origin + "/admin/items/verify",
     method: "POST",
@@ -805,11 +863,14 @@ function handleVerification(itemId, action) {
     headers: authHeaders(),
     data: JSON.stringify({ item_id: itemId, action }),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadPendingItems();
     },
     error() {
-      alert("Action failed");
+      notify("Action failed", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 }
@@ -836,6 +897,9 @@ function renderPagination(containerId, pagination, callbackName) {
 }
 
 function loadReportedItems(page = 1) {
+  $("#reportedItemsTable").html(
+    "<tr><td colspan='8' class='text-center'><div class='spinner-border spinner-border-sm me-2'></div>Loading reports...</td></tr>",
+  );
   $.ajax({
     url: `${window.location.origin}/admin/reported-items?page=${page}&limit=8`,
     method: "GET",
@@ -883,10 +947,15 @@ function loadReportedItems(page = 1) {
   });
 }
 
-function handleReportAction(reportId, action) {
+async function handleReportAction(reportId, action, triggerEl) {
   const note = prompt("Optional admin note:");
 
-  if (!confirm(`Confirm ${action} action?`)) return;
+  const approved = await confirmAction(
+    `Confirm ${action} action?`,
+    "Moderation Action",
+  );
+  if (!approved) return;
+  const restoreButton = setActionLoading($(triggerEl), "Processing...");
 
   $.ajax({
     url: window.location.origin + "/admin/reports/action",
@@ -899,16 +968,22 @@ function handleReportAction(reportId, action) {
       admin_note: note,
     }),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadReportedItems();
     },
     error() {
-      alert("Action failed");
+      notify("Action failed", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 }
 
 function loadLogs() {
+  $("#logsTable").html(
+    "<tr><td colspan='6' class='text-center'><div class='spinner-border spinner-border-sm me-2'></div>Loading logs...</td></tr>",
+  );
   $.ajax({
     url: window.location.origin + "/admin/logs",
     method: "GET",
@@ -934,6 +1009,9 @@ function loadLogs() {
 }
 
 function loadUsers() {
+  $("#usersTable").html(
+    "<tr><td colspan='5' class='text-center'><div class='spinner-border spinner-border-sm me-2'></div>Loading users...</td></tr>",
+  );
   $.ajax({
     url: window.location.origin + "/admin/users",
     method: "GET",
@@ -960,6 +1038,9 @@ function loadUsers() {
 }
 
 function loadPaymentRequests() {
+  $("#paymentRequestsTable").html(
+    "<tr><td colspan='7' class='text-center'><div class='spinner-border spinner-border-sm me-2'></div>Loading payment requests...</td></tr>",
+  );
   $.ajax({
     url: window.location.origin + "/admin/payment-requests",
     method: "GET",
@@ -1394,33 +1475,35 @@ function openDashboardPage(page) {
 }
 
 $(document).on("click", ".verifyItem", function () {
-  handleVerification($(this).data("id"), "verified");
+  handleVerification($(this).data("id"), "verified", this);
 });
 
 $(document).on("click", ".rejectItem", function () {
-  handleVerification($(this).data("id"), "rejected");
+  handleVerification($(this).data("id"), "rejected", this);
 });
 
 $(document).on("click", ".deleteReportedItem", function () {
-  handleReportAction($(this).data("report"), "delete");
+  handleReportAction($(this).data("report"), "delete", this);
 });
 
 $(document).on("click", ".ignoreReport", function () {
-  handleReportAction($(this).data("report"), "ignore");
+  handleReportAction($(this).data("report"), "ignore", this);
 });
 
-$(document).on("click", ".deleteItem", function () {
+$(document).on("click", ".deleteItem", async function () {
   const itemId = $(this).data("id");
   const refreshTarget = $(this).data("refresh");
 
-  if (!confirm("Delete this item?")) return;
+  const approved = await confirmAction("Delete this item?", "Delete Item");
+  if (!approved) return;
+  const restoreButton = setActionLoading($(this), "Deleting...");
 
   $.ajax({
     url: window.location.origin + "/items/" + itemId,
     method: "DELETE",
     headers: authHeaders(),
     success() {
-      alert("Item deleted successfully");
+      notify("Item deleted successfully", "success");
       if (refreshTarget) {
         openDashboardPage(refreshTarget);
       } else {
@@ -1428,7 +1511,10 @@ $(document).on("click", ".deleteItem", function () {
       }
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to delete item");
+      notify(xhr.responseJSON?.message || "Failed to delete item", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
@@ -1437,17 +1523,26 @@ $(document).on("click", ".editItem", function () {
   window.location.href = "edit-item.html?id=" + $(this).data("id");
 });
 
-$(document).on("click", ".deleteUser", function () {
+$(document).on("click", ".deleteUser", async function () {
   const id = $(this).data("id");
 
-  if (!confirm("Delete this user?")) return;
+  const approved = await confirmAction("Delete this user?", "Delete User");
+  if (!approved) return;
+  const restoreButton = setActionLoading($(this), "Deleting...");
 
   $.ajax({
     url: window.location.origin + "/admin/users/" + id,
     method: "DELETE",
     headers: authHeaders(),
     success() {
+      notify("User deleted successfully", "success");
       loadUsers();
+    },
+    error(xhr) {
+      notify(xhr.responseJSON?.message || "Failed to delete user", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
@@ -1462,6 +1557,7 @@ $(document).on("click", ".reviewPaymentRequest", function () {
     approvedCoins = prompt("Approve how many coins?", defaultCoins);
     if (!approvedCoins) return;
   }
+  const restoreButton = setActionLoading($(this), "Processing...");
 
   $.ajax({
     url: window.location.origin + "/admin/payment-requests/" + id + "/review",
@@ -1473,49 +1569,71 @@ $(document).on("click", ".reviewPaymentRequest", function () {
       approved_coins: approvedCoins,
     }),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadPaymentRequests();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to review request");
+      notify(xhr.responseJSON?.message || "Failed to review request", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
 
-$(document).on("click", ".requestContact", function () {
+$(document).on("click", ".requestContact", async function () {
   const id = $(this).data("id");
 
-  if (!confirm("Send a contact request for this possible match?")) return;
+  const approved = await confirmAction(
+    "Send a contact request for this possible match?",
+    "Contact Request",
+  );
+  if (!approved) return;
+  const restoreButton = setActionLoading($(this), "Sending...");
 
   $.ajax({
     url: window.location.origin + "/matches/" + id + "/request-contact",
     method: "POST",
     headers: authHeaders(),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadMatches();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to send contact request");
+      notify(
+        xhr.responseJSON?.message || "Failed to send contact request",
+        "error",
+      );
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
 
-$(document).on("click", ".rejectMatch", function () {
+$(document).on("click", ".rejectMatch", async function () {
   const id = $(this).data("id");
 
-  if (!confirm("Dismiss this possible match?")) return;
+  const approved = await confirmAction(
+    "Dismiss this possible match?",
+    "Dismiss Match",
+  );
+  if (!approved) return;
+  const restoreButton = setActionLoading($(this), "Processing...");
 
   $.ajax({
     url: window.location.origin + "/matches/" + id + "/reject",
     method: "POST",
     headers: authHeaders(),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadMatches();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to update match");
+      notify(xhr.responseJSON?.message || "Failed to update match", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
@@ -1524,6 +1642,7 @@ $(document).on("click", ".shareClaimContact", function () {
   const id = $(this).data("id");
   const sharePhone = Boolean($(this).data("share-phone"));
   const shareEmail = Boolean($(this).data("share-email"));
+  const restoreButton = setActionLoading($(this), "Sharing...");
 
   $.ajax({
     url: window.location.origin + "/claims/" + id + "/share-contact",
@@ -1535,71 +1654,90 @@ $(document).on("click", ".shareClaimContact", function () {
       share_email: shareEmail,
     }),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadIncomingClaims();
       loadNotifications();
       loadMatches();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to share contact details");
+      notify(
+        xhr.responseJSON?.message || "Failed to share contact details",
+        "error",
+      );
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
 
 $(document).on("click", ".confirmDelivered", function () {
   const id = $(this).data("id");
+  const restoreButton = setActionLoading($(this), "Saving...");
 
   $.ajax({
     url: window.location.origin + "/claims/" + id + "/confirm-delivered",
     method: "POST",
     headers: authHeaders(),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadIncomingClaims();
       loadNotifications();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to confirm delivery");
+      notify(xhr.responseJSON?.message || "Failed to confirm delivery", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
 
 $(document).on("click", ".confirmReceived", function () {
   const id = $(this).data("id");
+  const restoreButton = setActionLoading($(this), "Saving...");
 
   $.ajax({
     url: window.location.origin + "/claims/" + id + "/confirm-received",
     method: "POST",
     headers: authHeaders(),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadMatches();
       loadNotifications();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to confirm receipt");
+      notify(xhr.responseJSON?.message || "Failed to confirm receipt", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
 
-$(document).on("click", ".rejectClaim", function () {
+$(document).on("click", ".rejectClaim", async function () {
   const id = $(this).data("id");
   const label = $(this).data("label") || "Close claim";
 
-  if (!confirm(label + "?")) return;
+  const approved = await confirmAction(`${label}?`, "Close Claim");
+  if (!approved) return;
+  const restoreButton = setActionLoading($(this), "Processing...");
 
   $.ajax({
     url: window.location.origin + "/claims/" + id + "/reject",
     method: "POST",
     headers: authHeaders(),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadMatches();
       loadIncomingClaims();
       loadNotifications();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to close claim");
+      notify(xhr.responseJSON?.message || "Failed to close claim", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
@@ -1610,6 +1748,7 @@ $(document).on("click", ".reportClaimUser", function () {
   if (!reason) return;
   const description = prompt("Describe what happened:");
   if (!description) return;
+  const restoreButton = setActionLoading($(this), "Submitting...");
 
   $.ajax({
     url: window.location.origin + "/claims/" + id + "/report-user",
@@ -1618,10 +1757,13 @@ $(document).on("click", ".reportClaimUser", function () {
     headers: authHeaders(),
     data: JSON.stringify({ reason, description }),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to report user");
+      notify(xhr.responseJSON?.message || "Failed to report user", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
@@ -1631,6 +1773,7 @@ $(document).on("click", ".rateClaimUser", function () {
   const rating = prompt("Rate this user from 1 to 5:");
   if (!rating) return;
   const comment = prompt("Optional comment:") || "";
+  const restoreButton = setActionLoading($(this), "Submitting...");
 
   $.ajax({
     url: window.location.origin + "/claims/" + id + "/rate-user",
@@ -1639,10 +1782,13 @@ $(document).on("click", ".rateClaimUser", function () {
     headers: authHeaders(),
     data: JSON.stringify({ rating, comment }),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to submit rating");
+      notify(xhr.responseJSON?.message || "Failed to submit rating", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
@@ -1652,6 +1798,7 @@ $(document).on("click", ".respondContactRequest", function () {
   const decision = $(this).data("decision");
   const sharePhone = Boolean($(this).data("share-phone"));
   const shareEmail = Boolean($(this).data("share-email"));
+  const restoreButton = setActionLoading($(this), "Processing...");
 
   $.ajax({
     url:
@@ -1668,17 +1815,21 @@ $(document).on("click", ".respondContactRequest", function () {
       share_email: shareEmail,
     }),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       loadNotifications();
     },
     error(xhr) {
-      alert(xhr.responseJSON?.message || "Failed to process request");
+      notify(xhr.responseJSON?.message || "Failed to process request", "error");
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
 
 $(document).on("click", ".markNotificationRead", function () {
   const id = $(this).data("id");
+  const restoreButton = setActionLoading($(this), "Marking...");
 
   $.ajax({
     url: window.location.origin + "/notifications/" + id + "/read",
@@ -1686,6 +1837,9 @@ $(document).on("click", ".markNotificationRead", function () {
     headers: authHeaders(),
     success() {
       loadNotifications();
+    },
+    complete() {
+      restoreButton();
     },
   });
 });
@@ -1711,6 +1865,7 @@ $(document).on("click", "#saveProfileBtn", function () {
     return;
   }
 
+  const restoreButton = setActionLoading($(this), "Saving...");
   $.ajax({
     url: window.location.origin + "/profile",
     method: "PUT",
@@ -1740,20 +1895,28 @@ $(document).on("click", "#saveProfileBtn", function () {
         "danger",
       );
     },
+    complete() {
+      restoreButton();
+    },
   });
 });
 
-$(document).on("click", "#deleteAccountBtn", function () {
-  if (!confirm("Delete your account permanently? This cannot be undone.")) {
+$(document).on("click", "#deleteAccountBtn", async function () {
+  const approved = await confirmAction(
+    "Delete your account permanently? This cannot be undone.",
+    "Delete Account",
+  );
+  if (!approved) {
     return;
   }
+  const restoreButton = setActionLoading($(this), "Deleting...");
 
   $.ajax({
     url: window.location.origin + "/profile",
     method: "DELETE",
     headers: authHeaders(),
     success(res) {
-      alert(res.message);
+      notify(res.message, "success");
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       window.location.href = "index.html";
@@ -1763,6 +1926,9 @@ $(document).on("click", "#deleteAccountBtn", function () {
         xhr.responseJSON?.message || "Failed to delete account",
         "danger",
       );
+    },
+    complete() {
+      restoreButton();
     },
   });
 });

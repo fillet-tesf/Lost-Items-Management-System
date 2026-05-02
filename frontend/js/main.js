@@ -1,3 +1,28 @@
+function showToastMessage(message, type = "info") {
+  if (window.LIMS_UI && window.LIMS_UI.showToast) {
+    window.LIMS_UI.showToast(message, type);
+    return;
+  }
+  console.log(message);
+}
+
+function lockSubmitButton($form, label) {
+  const $button = $form.find('button[type="submit"]').first();
+  if (!$button.length) {
+    return function noop() {};
+  }
+
+  if (window.LIMS_UI && window.LIMS_UI.setButtonLoading) {
+    return window.LIMS_UI.setButtonLoading($button, label);
+  }
+
+  const originalText = $button.text();
+  $button.prop("disabled", true).text(label || "Processing...");
+  return function restore() {
+    $button.prop("disabled", false).text(originalText);
+  };
+}
+
 $(document).ready(function () {
   // -------- SUBMIT VALIDATION FOR UPLOAD PAGE--------
   $("#uploadForm").on("submit", function (e) {
@@ -27,10 +52,12 @@ $(document).ready(function () {
     const token = localStorage.getItem("token");
 
     if (!token) {
-      alert("Please login first");
+      showToastMessage("Please login first", "warning");
       window.location.href = "login.html";
       return;
     }
+
+    const restoreUploadButton = lockSubmitButton($(this), "Submitting...");
 
     const formData = new FormData();
 
@@ -74,7 +101,10 @@ $(document).ready(function () {
       },
 
       error: function (err) {
-        alert(err.responseJSON?.message || "Upload failed");
+        showToastMessage(err.responseJSON?.message || "Upload failed", "error");
+      },
+      complete: function () {
+        restoreUploadButton();
       },
     });
     return false;
@@ -122,9 +152,11 @@ $("#signUpForm").on("submit", function (e) {
   if (!isValid) return;
 
   if ($("#password").val() !== $("#confirmPassword").val()) {
-    alert("Passwords do not match");
+    showToastMessage("Passwords do not match", "warning");
     return;
   }
+
+  const restoreSignupButton = lockSubmitButton($(this), "Creating account...");
 
   const userData = {
     fullName: $("#fullName").val(),
@@ -144,7 +176,10 @@ $("#signUpForm").on("submit", function (e) {
     },
 
     error: function (err) {
-      alert(err.responseJSON?.message || "Signup failed");
+      showToastMessage(err.responseJSON?.message || "Signup failed", "error");
+    },
+    complete: function () {
+      restoreSignupButton();
     },
   });
 });
@@ -182,6 +217,8 @@ $("#loginForm").on("submit", function (e) {
 
   if (!isValid) return;
 
+  const restoreLoginButton = lockSubmitButton($(this), "Signing in...");
+
   const email = $("#loginEmailOrPhone").val();
   const password = $("#loginPassword").val();
 
@@ -200,7 +237,10 @@ $("#loginForm").on("submit", function (e) {
     },
 
     error: function (err) {
-      alert(err.responseJSON?.message || "Login failed");
+      showToastMessage(err.responseJSON?.message || "Login failed", "error");
+    },
+    complete: function () {
+      restoreLoginButton();
     },
   });
 });

@@ -2567,8 +2567,63 @@ app.delete("/items/:id", authMiddleware, async (req, res) => {
       });
     }
 
+    await queryAsync("START TRANSACTION");
+    console.log(`[DELETE /items/${itemId}] transaction started`);
+
+    const matchRows = await queryAsync(
+      `SELECT id
+       FROM matches
+       WHERE lost_item_id = ?
+          OR found_item_id = ?`,
+      [itemId, itemId],
+    );
+    const matchIds = matchRows.map((match) => match.id);
+
+    if (matchIds.length) {
+      const matchPlaceholders = matchIds.map(() => "?").join(", ");
+
+      await queryAsync(
+        `DELETE FROM notifications
+         WHERE related_match_id IN (${matchPlaceholders})`,
+        matchIds,
+      );
+      console.log(
+        `[DELETE /items/${itemId}] removed notifications for ${matchIds.length} match record(s)`,
+      );
+    }
+
+    await queryAsync(
+      "DELETE FROM notifications WHERE related_item_id = ?",
+      [itemId],
+    );
+    console.log(`[DELETE /items/${itemId}] removed item notifications`);
+
+    await queryAsync(
+      "DELETE FROM item_claims WHERE item_id = ?",
+      [itemId],
+    );
+    console.log(`[DELETE /items/${itemId}] removed related item_claims`);
+
+    await queryAsync(
+      "DELETE FROM reported_items WHERE item_id = ?",
+      [itemId],
+    );
+    console.log(`[DELETE /items/${itemId}] removed related reported_items`);
+
+    await queryAsync(
+      "DELETE FROM matches WHERE lost_item_id = ? OR found_item_id = ?",
+      [itemId, itemId],
+    );
+    console.log(`[DELETE /items/${itemId}] removed related matches`);
+
+    await queryAsync("DELETE FROM item_history WHERE item_id = ?", [itemId]);
+    console.log(`[DELETE /items/${itemId}] removed related item_history rows`);
+
     await queryAsync("DELETE FROM items WHERE id = ?", [itemId]);
-    console.log(`[DELETE /items/${itemId}] database delete succeeded`);
+    console.log(`[DELETE /items/${itemId}] item row deleted`);
+
+    await queryAsync("COMMIT");
+    console.log(`[DELETE /items/${itemId}] transaction committed`);
 
     if (itemImageUrl) {
       console.log(
@@ -2614,6 +2669,16 @@ app.delete("/items/:id", authMiddleware, async (req, res) => {
 
     return res.json({ message: "Item deleted successfully" });
   } catch (error) {
+    try {
+      await queryAsync("ROLLBACK");
+      console.log(`[DELETE /items/${itemId}] transaction rolled back`);
+    } catch (rollbackError) {
+      console.error(
+        `[DELETE /items/${itemId}] rollback failed:`,
+        rollbackError,
+      );
+    }
+
     console.error(`[DELETE /items/${itemId}] failed:`, error);
     return res.status(500).json({ message: "Failed to delete item" });
   }
