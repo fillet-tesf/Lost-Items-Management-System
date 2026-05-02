@@ -499,3 +499,35 @@ body {
   background: rgba(13, 110, 253, 0.1);
   transform: translateY(-2px);
 }
+
+/* ========== CUSTOM LINKS ========== */
+.custom-link {
+  text-decoration: none;
+  color: #1f2937;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.custom-link:hover {
+  color: var(--primary-color);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.custom-link i {
+  margin-right: 4px;
+  font-size: 0.9em;
+}
+
+/* Item title links */
+.item-title-link {
+  text-decoration: none;
+  color: #1f2937;
+  font-weight: 600;
+  transition: var(--transition);
+}
+
+.item-title-link:hover {
+  color: var(--primary-color);
+}

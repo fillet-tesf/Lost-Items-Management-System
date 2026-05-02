@@ -464,3 +464,94 @@ body {
   background: #f3f4f6;
   color: #9ca3af;
 }
+
+/* ========== CUSTOM LINKS ========== */
+.custom-link {
+  text-decoration: none;
+  color: #1f2937;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.custom-link:hover {
+  color: #0d6efd;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.custom-link i {
+  margin-right: 4px;
+  font-size: 0.9em;
+}
+
+/* ========== ENHANCED STAT CARDS ========== */
+.stat-card {
+  position: relative;
+  overflow: hidden;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  padding: 1.25rem;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.stat-icon {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.stat-card-primary .stat-icon {
+  background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+  color: white;
+}
+
+.stat-card-success .stat-icon {
+  background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+  color: white;
+}
+
+.stat-card-warning .stat-icon {
+  background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%);
+  color: #000;
+}
+
+.stat-card-info .stat-icon {
+  background: linear-gradient(135deg, #0dcaf0 0%, #0aa2c0 100%);
+  color: white;
+}
+
+.stat-card-danger .stat-icon {
+  background: linear-gradient(135deg, #dc3545 0%, #b02a37 100%);
+  color: white;
+}
+
+/* Add subtle background tint to card */
+.stat-card-primary {
+  background: linear-gradient(135deg, rgba(13, 110, 253, 0.05) 0%, white 100%);
+}
+
+.stat-card-success {
+  background: linear-gradient(135deg, rgba(25, 135, 84, 0.05) 0%, white 100%);
+}
+
+.stat-card-warning {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.05) 0%, white 100%);
+}
+
+.stat-card-info {
+  background: linear-gradient(135deg, rgba(13, 202, 240, 0.05) 0%, white 100%);
+}
+
+.stat-card-danger {
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.05) 0%, white 100%);
+}

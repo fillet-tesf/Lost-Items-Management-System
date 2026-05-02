@@ -39,7 +39,12 @@ const CONTACT_SHARED_TITLE = "Contact info shared";
 const CONTACT_DECLINED_TITLE = "Contact request declined";
 const CLAIM_COMPLETED_TITLE = "Claim completed";
 const CLAIM_UPDATE_TITLE = "Claim update";
+const ITEM_REJECTED_TITLE = "Item Rejected";
+const WARNING_BADGE_TITLE = "Warning Badge Assigned";
+const WARNING_BADGE_REMOVED_TITLE = "Warning Badge Removed";
+const RETURN_BADGE_TITLE = "Return Badge Earned";
 const MATCH_SCORE_THRESHOLD = 55;
+const WARNING_REPORT_THRESHOLD = 2;
 const STOP_WORDS = new Set([
   "the",
   "and",
@@ -68,6 +73,205 @@ function queryAsync(sql, params = []) {
       resolve(results);
     });
   });
+}
+
+async function ensureReputationTables() {
+  await queryAsync(
+    `CREATE TABLE IF NOT EXISTS user_reputation_flags (
+      user_id INT PRIMARY KEY,
+      warning_cleared TINYINT(1) DEFAULT 0,
+      warning_notified TINYINT(1) DEFAULT 0,
+      last_return_badge_notified ENUM('none','blue','green') DEFAULT 'none',
+      warning_cleared_by INT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (warning_cleared_by) REFERENCES users(id)
+    )`,
+  );
+
+  await queryAsync(
+    `CREATE TABLE IF NOT EXISTS badge_appeals (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      badge_type ENUM('warning') DEFAULT 'warning',
+      reason TEXT NOT NULL,
+      status ENUM('pending','approved','rejected') DEFAULT 'pending',
+      reviewed_by INT NULL,
+      admin_note TEXT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at TIMESTAMP NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    )`,
+  );
+}
+
+async function ensureSchemaAdditions() {
+  try {
+    await queryAsync("ALTER TABLE items ADD COLUMN rejection_reason TEXT NULL");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+}
+
+async function ensureUserReputationFlagRow(userId) {
+  await queryAsync(
+    `INSERT INTO user_reputation_flags (user_id)
+     VALUES (?)
+     ON DUPLICATE KEY UPDATE user_id = user_id`,
+    [userId],
+  );
+}
+
+function getBadgePayload(summary) {
+  const badges = [];
+
+  if (summary.return_badge === "blue") {
+    badges.push({
+      key: "blue",
+      label: "Blue Badge",
+      color: "primary",
+      tooltip: "This user has successfully returned 1 item",
+    });
+  }
+
+  if (summary.return_badge === "green") {
+    badges.push({
+      key: "green",
+      label: "Green Badge",
+      color: "success",
+      tooltip: "This user has successfully returned multiple items",
+    });
+  }
+
+  if (summary.warning_badge) {
+    badges.push({
+      key: "warning",
+      label: "Warning",
+      color: "warning",
+      tooltip:
+        "Warning: This user has received multiple reports. تعامل carefully.",
+    });
+  }
+
+  return badges;
+}
+
+async function getUserReputationSummary(userId) {
+  await ensureUserReputationFlagRow(userId);
+
+  const [returns] = await queryAsync(
+    `SELECT COUNT(*) AS successful_returns
+     FROM item_claims
+     JOIN items ON item_claims.item_id = items.id
+     WHERE items.user_id = ?
+       AND items.item_type = 'found'
+       AND item_claims.status = 'completed'`,
+    [userId],
+  );
+
+  const [ratings] = await queryAsync(
+    `SELECT
+       AVG(rating) AS average_rating,
+       COUNT(*) AS rating_count
+     FROM user_ratings
+     WHERE to_user = ?`,
+    [userId],
+  );
+
+  const [reports] = await queryAsync(
+    `SELECT
+       (
+         (SELECT COUNT(*)
+          FROM reported_items
+          JOIN items ON reported_items.item_id = items.id
+          WHERE items.user_id = ?)
+         +
+         (SELECT COUNT(*) FROM user_reports WHERE reported_user_id = ?)
+       ) AS reports_received`,
+    [userId, userId],
+  );
+
+  const [flags] = await queryAsync(
+    `SELECT warning_cleared, warning_notified, last_return_badge_notified
+     FROM user_reputation_flags
+     WHERE user_id = ?`,
+    [userId],
+  );
+
+  const successfulReturns = Number(returns?.successful_returns || 0);
+  const reportsReceived = Number(reports?.reports_received || 0);
+  const warningCleared = Boolean(flags?.warning_cleared);
+
+  let returnBadge = null;
+  if (successfulReturns >= 2) returnBadge = "green";
+  else if (successfulReturns >= 1) returnBadge = "blue";
+
+  const warningBadge =
+    reportsReceived >= WARNING_REPORT_THRESHOLD && !warningCleared;
+
+  return {
+    average_rating: Number(ratings?.average_rating || 0),
+    rating_count: Number(ratings?.rating_count || 0),
+    successful_returns: successfulReturns,
+    reports_received: reportsReceived,
+    return_badge: returnBadge,
+    warning_badge: warningBadge,
+    warning_cleared: warningCleared,
+    warning_notified: Boolean(flags?.warning_notified),
+    last_return_badge_notified: flags?.last_return_badge_notified || "none",
+    badges: getBadgePayload({
+      return_badge: returnBadge,
+      warning_badge: warningBadge,
+    }),
+  };
+}
+
+async function maybeNotifyReturnBadge(userId, itemTitle) {
+  const summary = await getUserReputationSummary(userId);
+  const badge = summary.return_badge || "none";
+
+  if (
+    badge !== "none" &&
+    summary.last_return_badge_notified !== badge
+  ) {
+    await createNotification(
+      userId,
+      RETURN_BADGE_TITLE,
+      badge === "green"
+        ? `You earned the Green Badge after successfully returning multiple items. Latest item: "${itemTitle}".`
+        : `You earned the Blue Badge after your first successful item return. Item: "${itemTitle}".`,
+    );
+
+    await queryAsync(
+      `UPDATE user_reputation_flags
+       SET last_return_badge_notified = ?
+       WHERE user_id = ?`,
+      [badge, userId],
+    );
+  }
+}
+
+async function maybeAssignWarningBadge(userId) {
+  const summary = await getUserReputationSummary(userId);
+
+  if (summary.warning_badge && !summary.warning_notified) {
+    await createNotification(
+      userId,
+      WARNING_BADGE_TITLE,
+      "Your account now has a warning badge due to multiple reports. You can submit an appeal from your profile.",
+    );
+
+    await queryAsync(
+      `UPDATE user_reputation_flags
+       SET warning_notified = 1,
+           warning_cleared = 0
+       WHERE user_id = ?`,
+      [userId],
+    );
+  }
 }
 
 function tokenizeText(value) {
@@ -692,6 +896,7 @@ async function markClaimCompletedIfReady(claimId) {
       "credit",
       `Found item completed successfully: ${context.found_title}`,
     );
+    await maybeNotifyReturnBadge(context.found_owner_id, context.found_title);
     await createNotification(
       context.lost_owner_id,
       CLAIM_COMPLETED_TITLE,
@@ -764,6 +969,10 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use("/uploads", express.static("uploads"));
 app.use(express.static(path.join(__dirname, "../frontend"))); // for serving frontend files if needed
 
+Promise.all([ensureReputationTables(), ensureSchemaAdditions()]).catch((error) => {
+  console.error("Failed to ensure reputation schema:", error);
+});
+
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/index.html"));
 });
@@ -795,6 +1004,7 @@ app.get("/my-items", authMiddleware, (req, res) => {
       items.title,
       items.item_type,
       items.created_at,
+      items.rejection_reason,
       categories.name AS category,
       locations.name AS location,
       item_statuses.status_name AS status
@@ -871,12 +1081,29 @@ app.get("/profile", authMiddleware, (req, res) => {
 
     try {
       await recalculateUserStats(req.user.userId);
-      db.query(sql, [req.user.userId], (retryErr, refreshedResult) => {
+      db.query(sql, [req.user.userId], async (retryErr, refreshedResult) => {
         if (retryErr) return res.status(500).json(retryErr);
-        res.json(refreshedResult[0]);
+        const reputation = await getUserReputationSummary(req.user.userId);
+        res.json({
+          ...refreshedResult[0],
+          average_rating: reputation.average_rating,
+          rating_count: reputation.rating_count,
+          badges: reputation.badges,
+        });
       });
     } catch (statsError) {
-      res.json(result[0]);
+      getUserReputationSummary(req.user.userId)
+        .then((reputation) => {
+          res.json({
+            ...result[0],
+            average_rating: reputation.average_rating,
+            rating_count: reputation.rating_count,
+            badges: reputation.badges,
+          });
+        })
+        .catch(() => {
+          res.json(result[0]);
+        });
     }
   });
 });
@@ -1033,6 +1260,7 @@ app.delete("/profile", authMiddleware, async (req, res) => {
 app.get("/user/dashboard-summary", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
+    const reputation = await getUserReputationSummary(userId);
 
     const [itemStats] = await queryAsync(
       `SELECT
@@ -1097,6 +1325,9 @@ app.get("/user/dashboard-summary", authMiddleware, async (req, res) => {
         claimed_matches: matchStats.claimed_matches || 0,
         unread_notifications: notificationStats.unread_notifications || 0,
         coins: walletStats.coins || 0,
+        average_rating: Number(reputation.average_rating || 0),
+        rating_count: reputation.rating_count || 0,
+        badges: reputation.badges || [],
       },
       recent_items: recentItems,
     });
@@ -1122,7 +1353,36 @@ app.get("/items", (req, res) => {
       categories.name AS category,
       locations.name AS location,
       item_statuses.status_name AS status,
-      users.full_name AS reported_by
+      users.full_name AS reported_by,
+      (
+        SELECT AVG(r.rating)
+        FROM user_ratings r
+        WHERE r.to_user = users.id
+      ) AS reporter_average_rating,
+      (
+        SELECT COUNT(*)
+        FROM user_ratings r
+        WHERE r.to_user = users.id
+      ) AS reporter_rating_count,
+      (
+        SELECT COUNT(*)
+        FROM item_claims ic
+        JOIN items fi ON ic.item_id = fi.id
+        WHERE fi.user_id = users.id
+          AND fi.item_type = 'found'
+          AND ic.status = 'completed'
+      ) AS reporter_successful_returns,
+      (
+        (SELECT COUNT(*)
+         FROM reported_items rp
+         JOIN items ri ON rp.item_id = ri.id
+         WHERE ri.user_id = users.id)
+        +
+        (SELECT COUNT(*)
+         FROM user_reports ur
+         WHERE ur.reported_user_id = users.id)
+      ) AS reporter_reports_received,
+      COALESCE(rep_flags.warning_cleared, 0) AS reporter_warning_cleared
     FROM items
     JOIN categories ON items.category_id = categories.id
     JOIN locations ON items.location_id = locations.id
@@ -1218,6 +1478,7 @@ app.get("/items/:id", (req, res) => {
       items.category_id,
       items.location_id,
       items.image_url,
+      items.rejection_reason,
       items.lost_date,
       items.found_date,
       items.created_at,
@@ -1230,6 +1491,7 @@ app.get("/items/:id", (req, res) => {
     JOIN locations ON items.location_id = locations.id
     JOIN item_statuses ON items.item_status_id = item_statuses.id
     JOIN users ON items.user_id = users.id
+    LEFT JOIN user_reputation_flags rep_flags ON rep_flags.user_id = users.id
     WHERE items.id = ?
   `;
 
@@ -1242,7 +1504,24 @@ app.get("/items/:id", (req, res) => {
       return res.status(404).json({ message: "Item not found" });
     }
 
-    res.json(results[0]);
+    const item = results[0];
+    const successfulReturns = Number(item.reporter_successful_returns || 0);
+    const reportsReceived = Number(item.reporter_reports_received || 0);
+    const warningBadge =
+      reportsReceived >= WARNING_REPORT_THRESHOLD &&
+      !Boolean(item.reporter_warning_cleared);
+
+    let returnBadge = null;
+    if (successfulReturns >= 2) returnBadge = "green";
+    else if (successfulReturns >= 1) returnBadge = "blue";
+
+    res.json({
+      ...item,
+      reporter_badges: getBadgePayload({
+        return_badge: returnBadge,
+        warning_badge: warningBadge,
+      }),
+    });
   });
 });
 
@@ -2411,6 +2690,7 @@ app.post("/claims/:id/report-user", authMiddleware, async (req, res) => {
     );
     await recalculateUserStats(req.user.userId);
     await recalculateUserStats(reportedUserId);
+    await maybeAssignWarningBadge(reportedUserId);
 
     res.json({ message: "User reported successfully" });
   } catch (error) {
@@ -2685,10 +2965,10 @@ app.delete("/items/:id", authMiddleware, async (req, res) => {
 });
 // admin item verification
 
-app.post("/admin/items/verify", authMiddleware, (req, res) => {
-  const { item_id, action } = req.body;
+app.post("/admin/items/verify", authMiddleware, async (req, res) => {
+  const { item_id, action, rejection_reason } = req.body;
 
-  const admin_id = req.user.userId;
+  const adminId = req.user.userId;
   const role = req.user.role;
 
   if (role !== "admin") {
@@ -2703,37 +2983,72 @@ app.post("/admin/items/verify", authMiddleware, (req, res) => {
     return res.status(400).json({ message: "Invalid action" });
   }
 
-  db.query(
-    "SELECT id FROM item_statuses WHERE status_name = ?",
-    [action],
-    (err, statusResult) => {
-      if (err || statusResult.length === 0) {
-        return res.status(500).json({ message: "Invalid status" });
-      }
+  if (action === "rejected" && !String(rejection_reason || "").trim()) {
+    return res.status(400).json({ message: "Rejection reason is required" });
+  }
 
-      const statusId = statusResult[0].id;
+  try {
+    const [statusRow] = await queryAsync(
+      "SELECT id FROM item_statuses WHERE status_name = ?",
+      [action],
+    );
 
-      const updateSql =
-        "UPDATE items SET item_status_id = ?, is_verified = ?, verified_by = ?, verified_at = NOW() WHERE id = ?";
+    if (!statusRow) {
+      return res.status(500).json({ message: "Invalid status" });
+    }
 
-      db.query(
-        updateSql,
-        [statusId, action === "verified" ? 1 : 0, admin_id, item_id],
-        (err) => {
-          if (err) {
-            return res.status(500).json({ message: "Failed to update item" });
-          }
+    const [itemRow] = await queryAsync(
+      "SELECT id, user_id, title FROM items WHERE id = ?",
+      [item_id],
+    );
 
-          db.query(
-            "INSERT INTO admin_actions (admin_id, action_type, target_id, target_type) VALUES (?, ?, ?, 'item')",
-            [admin_id, action, item_id],
-          );
+    if (!itemRow) {
+      return res.status(404).json({ message: "Item not found" });
+    }
 
-          res.json({ message: `Item ${action} successfully` });
-        },
+    await queryAsync(
+      `UPDATE items
+       SET item_status_id = ?,
+           is_verified = ?,
+           verified_by = ?,
+           verified_at = NOW(),
+           rejection_reason = ?
+       WHERE id = ?`,
+      [
+        statusRow.id,
+        action === "verified" ? 1 : 0,
+        adminId,
+        action === "rejected" ? String(rejection_reason).trim() : null,
+        item_id,
+      ],
+    );
+
+    await queryAsync(
+      `INSERT INTO admin_actions (admin_id, action_type, target_id, target_type, details)
+       VALUES (?, ?, ?, 'item', ?)`,
+      [
+        adminId,
+        action,
+        item_id,
+        action === "rejected"
+          ? `Rejected item with reason: ${String(rejection_reason).trim()}`
+          : "Verified item",
+      ],
+    );
+
+    if (action === "rejected") {
+      await createNotification(
+        itemRow.user_id,
+        ITEM_REJECTED_TITLE,
+        `Your item "${itemRow.title}" was rejected. Reason: ${String(rejection_reason).trim()}`,
+        item_id,
       );
-    },
-  );
+    }
+
+    res.json({ message: `Item ${action} successfully` });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update item" });
+  }
 });
 
 // report item
@@ -2780,6 +3095,7 @@ app.post("/items/:itemId/report", authMiddleware, async (req, res) => {
     );
     await recalculateUserStats(reportedBy);
     await recalculateUserStats(items[0].user_id);
+    await maybeAssignWarningBadge(items[0].user_id);
 
     res.status(201).json({
       message: "Item reported successfully",
@@ -3135,11 +3451,13 @@ app.get("/admin/suspicious-users", authMiddleware, async (req, res) => {
          u.full_name,
          u.email,
          u.trust_score,
+         COALESCE(flags.warning_cleared, 0) AS warning_cleared,
          COALESCE(stats.total_claims, 0) AS total_claims,
          COALESCE(stats.reports_received, 0) AS reports_received,
          COALESCE(claims.failed_claims, 0) AS failed_claims,
          COALESCE(claims.completed_claims, 0) AS completed_claims
        FROM users u
+       LEFT JOIN user_reputation_flags flags ON flags.user_id = u.id
        LEFT JOIN user_stats stats ON stats.user_id = u.id
        LEFT JOIN (
          SELECT
@@ -3165,11 +3483,16 @@ app.get("/admin/suspicious-users", authMiddleware, async (req, res) => {
         return {
           ...entry,
           success_rate: successRate,
+          warning_badge:
+            entry.reports_received >= WARNING_REPORT_THRESHOLD &&
+            !Boolean(entry.warning_cleared),
           is_suspicious:
             entry.failed_claims >= 3 ||
             entry.reports_received >= 3 ||
             (totalResolved >= 3 && successRate < 40) ||
-            entry.trust_score < 35,
+            entry.trust_score < 35 ||
+            (entry.reports_received >= WARNING_REPORT_THRESHOLD &&
+              !Boolean(entry.warning_cleared)),
         };
       })
       .filter((entry) => entry.is_suspicious);
@@ -3177,6 +3500,75 @@ app.get("/admin/suspicious-users", authMiddleware, async (req, res) => {
     res.json(suspiciousUsers);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch suspicious users" });
+  }
+});
+
+app.post("/admin/users/:id/mark-safe", authMiddleware, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+
+  try {
+    const targetUserId = Number(req.params.id);
+    await ensureUserReputationFlagRow(targetUserId);
+
+    await queryAsync(
+      `UPDATE user_reputation_flags
+       SET warning_cleared = 1,
+           warning_notified = 0,
+           warning_cleared_by = ?
+       WHERE user_id = ?`,
+      [req.user.userId, targetUserId],
+    );
+
+    await createNotification(
+      targetUserId,
+      WARNING_BADGE_REMOVED_TITLE,
+      "Your warning badge was removed after admin review.",
+    );
+
+    res.json({ message: "User marked as safe successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to mark user as safe" });
+  }
+});
+
+app.post("/badges/appeal", authMiddleware, async (req, res) => {
+  try {
+    const reason = String(req.body.reason || "").trim();
+    if (!reason) {
+      return res.status(400).json({ message: "Appeal reason is required" });
+    }
+
+    const reputation = await getUserReputationSummary(req.user.userId);
+    if (!reputation.warning_badge) {
+      return res.status(409).json({ message: "No active warning badge to appeal" });
+    }
+
+    const [existingAppeal] = await queryAsync(
+      `SELECT id
+       FROM badge_appeals
+       WHERE user_id = ?
+         AND badge_type = 'warning'
+         AND status = 'pending'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [req.user.userId],
+    );
+
+    if (existingAppeal) {
+      return res.status(409).json({ message: "You already have a pending appeal" });
+    }
+
+    await queryAsync(
+      `INSERT INTO badge_appeals (user_id, badge_type, reason)
+       VALUES (?, 'warning', ?)`,
+      [req.user.userId, reason],
+    );
+
+    res.status(201).json({ message: "Appeal submitted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to submit appeal" });
   }
 });
 

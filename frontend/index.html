@@ -171,8 +171,6 @@
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link active" href="index.html"><i
                                 class="bi bi-house me-1"></i>Home</a></li>
-                    <li class="nav-item"><a class="nav-link" href="search-results.html"><i
-                                class="bi bi-search me-1"></i>Search Items</a></li>
                     <li class="nav-item"><a class="nav-link" href="upload.html"><i
                                 class="bi bi-plus-circle me-1"></i>Report Item</a></li>
                     <li class="nav-item"><a class="nav-link" href="#" id="aboutLink"><i
@@ -233,16 +231,6 @@
         </div>
     </div>
 
-    <!-- ========== CATEGORY FILTERS ========== -->
-    <div class="container mt-4">
-        <div class="d-flex flex-wrap justify-content-center gap-2" id="categoryFilters">
-            <button class="btn btn-outline-primary rounded-pill category-filter active" data-category="">All</button>
-            <button class="btn btn-outline-primary rounded-pill category-filter" data-category="1">Phone</button>
-            <button class="btn btn-outline-primary rounded-pill category-filter" data-category="2">ID Card</button>
-            <button class="btn btn-outline-primary rounded-pill category-filter" data-category="3">Wallet</button>
-            <button class="btn btn-outline-primary rounded-pill category-filter" data-category="4">Document</button>
-        </div>
-    </div>
 
     <!-- ========== RECENT ITEMS ========== -->
     <div class="container mt-5">
@@ -462,20 +450,6 @@
                 window.location.href = url;
             });
 
-            // Category filter button click handler
-            $(document).on("click", ".category-filter", function () {
-                const category = $(this).data("category");
-
-                // Update active state
-                $(".category-filter").removeClass("active");
-                $(this).addClass("active");
-
-                // Update the dropdown to match
-                $("#categorySelect").val(category);
-
-                // Trigger search
-                $("#searchForm").submit();
-            });
         });
     </script>
 
