@@ -7,76 +7,347 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="css/style.css">
 </head>
 
 <body>
 
-    <div class="container mt-5">
-        <div id="itemDetails" class="card shadow p-4"></div>
+    <div class="container py-5">
+        <div id="itemDetails" class="item-details-shell"></div>
+    </div>
+
+    <div class="modal fade" id="reportModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Report Item</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Reason</label>
+                        <select id="reportReason" class="form-select">
+                            <option value="">Choose a reason</option>
+                            <option value="spam">Spam or fake listing</option>
+                            <option value="wrong_info">Wrong or misleading information</option>
+                            <option value="abuse">Abusive content</option>
+                            <option value="suspicious">Suspicious ownership claim</option>
+                        </select>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label">Details</label>
+                        <textarea id="reportDescription" class="form-control" rows="4"
+                            placeholder="Add useful details for the admin team."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="submitReportBtn">Submit Report</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="suggestMatchModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Suggest This Is My Item</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">Choose which lost report of yours should be linked to this found item.</p>
+                    <select id="lostItemSelect" class="form-select"></select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="submitSuggestBtn">Send Suggestion</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/ui.js"></script>
     <script>
-        $(document).ready(function () {
+        const params = new URLSearchParams(window.location.search);
+        const itemId = params.get("id");
+        const token = localStorage.getItem("token");
+        const user = JSON.parse(localStorage.getItem("user"));
+        const reportModal = new bootstrap.Modal(document.getElementById("reportModal"));
+        const suggestMatchModal = new bootstrap.Modal(document.getElementById("suggestMatchModal"));
 
-            const params = new URLSearchParams(window.location.search);
-            const itemId = params.get("id");
+        let currentItem = null;
 
-            const token = localStorage.getItem("token");
-            const user = JSON.parse(localStorage.getItem("user"));
+        function authHeaders() {
+            return token ? { Authorization: "Bearer " + token } : {};
+        }
 
+        function escapeHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function renderStarRating(value, count = 0) {
+            const rating = Number(value || 0);
+            if (!count) return "<span class='text-muted'>No ratings yet</span>";
+            const rounded = Math.round(rating);
+            let stars = "";
+            for (let index = 1; index <= 5; index += 1) {
+                stars += `<i class="bi ${index <= rounded ? "bi-star-fill text-warning" : "bi-star text-muted"}"></i>`;
+            }
+            return `<span class="d-inline-flex align-items-center gap-1" data-bs-toggle="tooltip" title="${rating.toFixed(1)} out of 5 based on ${count} rating(s).">${stars}<span class="ms-1">${rating.toFixed(1)} / 5</span></span>`;
+        }
+
+        function renderUserBadges(badges = []) {
+            if (!Array.isArray(badges) || !badges.length) {
+                return "<span class='text-muted'>No badges</span>";
+            }
+            return badges.map((badge) => `
+                <span class="badge bg-${escapeHtml(badge.color || "secondary")} ms-1"
+                    data-bs-toggle="tooltip"
+                    title="${escapeHtml(badge.tooltip || badge.label || "")}">
+                    ${escapeHtml(badge.label || "Badge")}
+                </span>
+            `).join("");
+        }
+
+        function activateTooltips() {
+            if (!window.bootstrap || !document.querySelectorAll) return;
+            document
+                .querySelectorAll('[data-bs-toggle="tooltip"]')
+                .forEach((element) => bootstrap.Tooltip.getOrCreateInstance(element));
+        }
+
+        function showToast(message, type = "info") {
+            if (window.LIMS_UI && window.LIMS_UI.showToast) {
+                window.LIMS_UI.showToast(message, type);
+                return;
+            }
+            console.log(message);
+        }
+
+        function setButtonLoading($button, label) {
+            if (window.LIMS_UI && window.LIMS_UI.setButtonLoading) {
+                return window.LIMS_UI.setButtonLoading($button, label);
+            }
+            const originalText = $button.text();
+            $button.prop("disabled", true).text(label);
+            return function restore() {
+                $button.prop("disabled", false).text(originalText);
+            };
+        }
+
+        function renderItem(item) {
+            const image = item.image_url
+                ? window.location.origin + item.image_url
+                : "https://via.placeholder.com/800x420?text=Item";
+            const isAdmin = Boolean(user && user.role === "admin");
+            const isOwner = Boolean(token && user && user.id === item.user_id);
+
+            const badge = item.item_type === "lost"
+                ? '<span class="badge bg-danger">Lost Item</span>'
+                : '<span class="badge bg-success">Found Item</span>';
+            const reportedBy = `
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <strong class="text-dark">${escapeHtml(item.reported_by)}</strong>
+                    ${renderStarRating(item.reporter_average_rating, item.reporter_rating_count)}
+                    ${renderUserBadges(item.reporter_badges || [])}
+                </div>
+            `;
+
+            let actions = "";
+
+            if (isOwner) {
+                actions = `
+                    <a href="edit-item.html?id=${item.id}" class="btn btn-warning">Edit</a>
+                    <button id="deleteBtn" class="btn btn-danger">Delete</button>
+                `;
+            } else if (isAdmin) {
+                actions = `
+                    <button id="deleteBtn" class="btn btn-danger">Delete Item</button>
+                `;
+            } else if (token && user && user.id !== item.user_id) {
+                actions = `
+                    ${item.item_type === "found" ? '<button id="suggestMatchBtn" class="btn btn-primary">This might be my item</button>' : ""}
+                    <button id="reportItemBtn" class="btn btn-outline-danger">Report Item</button>
+                `;
+            }
+
+            $("#itemDetails").html(`
+                <div class="card border-0 shadow-sm overflow-hidden">
+                    <div class="row g-0">
+                        <div class="col-lg-6">
+                            <img src="${image}" class="img-fluid h-100 w-100" style="object-fit: cover; min-height: 320px;" alt="Item image">
+                        </div>
+                            <div class="col-lg-6">
+                            <div class="card-body p-4 p-lg-5">
+                                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                                    <div>
+                                        <h2 class="mb-1 item-title-link">${item.title}</h2>
+                                        <p class="text-muted mb-0">${item.category} | ${item.location}</p>
+                                    </div>
+                                    ${badge}
+                                </div>
+                                <p class="lead">${item.description}</p>
+                                <div class="row g-3 small text-muted mb-4">
+                                    <div class="col-sm-12">Reported by: ${reportedBy}</div>
+                                    <div class="col-sm-6">Status: <strong class="text-dark text-capitalize">${item.status}</strong></div>
+                                    <div class="col-sm-6">Lost date: <strong class="text-dark">${item.lost_date ? new Date(item.lost_date).toLocaleDateString() : "N/A"}</strong></div>
+                                    <div class="col-sm-6">Found date: <strong class="text-dark">${item.found_date ? new Date(item.found_date).toLocaleDateString() : "N/A"}</strong></div>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <a href="search-results.html" class="btn btn-outline-secondary">Back to Search</a>
+                                    ${actions}
+                                </div>
+                                ${!token ? '<div class="alert alert-info mt-4 mb-0">Login to report this item or suggest that it may belong to you.</div>' : ""}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `);
+            activateTooltips();
+        }
+
+        function loadItem() {
             $.get(window.location.origin + "/items/" + itemId, function (item) {
                 if (!itemId || !item || item.id === undefined) {
-                    $("#itemDetails").html("<p>Item not found</p>");
+                    $("#itemDetails").html("<div class='alert alert-danger'>Item not found.</div>");
                     return;
                 }
 
-                const image = item.image_url
-                    ? window.location.origin + item.image_url
-                    : "https://via.placeholder.com/400x200";
+                currentItem = item;
+                renderItem(item);
+            });
+        }
 
-                let actionButtons = "";
+        function loadLostItemsForSuggestion() {
+            $.ajax({
+                url: window.location.origin + "/my-lost-items",
+                method: "GET",
+                headers: authHeaders(),
+                success(items) {
+                    if (!items.length) {
+                        showToast("You do not have any active lost-item reports yet.", "warning");
+                        window.location.href = "upload.html";
+                        return;
+                    }
 
-                if (token && user && user.user_id === item.user_id) {
-                    actionButtons = `
-                <button id="editBtn" class="btn btn-warning me-2">Edit</button>
-                <button id="deleteBtn" class="btn btn-danger">Delete</button>
-                        `;
-                } else if (token && user && user.user_id !== item.user_id) {
-                    actionButtons = `
-                        <button class="btn btn-primary">Report Item</button>
-                        `;
+                    const options = items.map(item => `
+                        <option value="${item.id}">
+                            ${item.title} | ${item.category} | ${item.location}
+                        </option>
+                    `).join("");
+
+                    $("#lostItemSelect").html(options);
+                    suggestMatchModal.show();
+                },
+                error() {
+                    showToast("Failed to load your lost items.", "error");
                 }
-
-                $("#itemDetails").html(
-                    `<img src="${image}" class="img-fluid mb-3">
-                        <h3>${item.title}</h3>
-                        <p>${item.description}</p>
-                        ${actionButtons}
-                        `);
             });
+        }
 
-            $(document).on("click", "#deleteBtn", function () {
-                if (!confirm("Delete this item?")) return;
+        $(document).on("click", "#deleteBtn", async function () {
+            const approved = window.LIMS_UI && window.LIMS_UI.showConfirm
+                ? await window.LIMS_UI.showConfirm({
+                    title: "Delete Item",
+                    message: "Delete this item?",
+                    confirmText: "Delete",
+                    confirmVariant: "danger"
+                })
+                : false;
+            if (!approved) return;
+            const restoreButton = setButtonLoading($(this), "Deleting...");
 
-                $.ajax({
-                    url: window.location.origin + "/items/" + itemId,
-                    method: "DELETE",
-                    headers: {
-                        Authorization: "Bearer " + token,
-                    },
-                    success: function () {
-                        alert("Item deleted");
-                        window.location.href = "user-dashboard.html";
-                    },
-                });
+            $.ajax({
+                url: window.location.origin + "/items/" + itemId,
+                method: "DELETE",
+                headers: authHeaders(),
+                success() {
+                    showToast("Item deleted successfully", "success");
+                    window.location.href = user?.role === "admin"
+                        ? "admin-dashboard.html"
+                        : "user-dashboard.html";
+                },
+                error(xhr) {
+                    showToast(xhr.responseJSON?.message || "Failed to delete item", "error");
+                },
+                complete() {
+                    restoreButton();
+                }
             });
-
         });
-    </script>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+        $(document).on("click", "#reportItemBtn", function () {
+            reportModal.show();
+        });
+
+        $(document).on("click", "#suggestMatchBtn", function () {
+            loadLostItemsForSuggestion();
+        });
+
+        $("#submitReportBtn").on("click", function () {
+            const restoreButton = setButtonLoading($(this), "Submitting...");
+            $.ajax({
+                url: window.location.origin + "/items/" + itemId + "/report",
+                method: "POST",
+                headers: {
+                    ...authHeaders(),
+                    "Content-Type": "application/json"
+                },
+                data: JSON.stringify({
+                    reason: $("#reportReason").val(),
+                    description: $("#reportDescription").val()
+                }),
+                success(res) {
+                    showToast(res.message, "success");
+                    reportModal.hide();
+                    $("#reportReason").val("");
+                    $("#reportDescription").val("");
+                },
+                error(xhr) {
+                    showToast(xhr.responseJSON?.message || "Failed to report item", "error");
+                },
+                complete() {
+                    restoreButton();
+                }
+            });
+        });
+
+        $("#submitSuggestBtn").on("click", function () {
+            const restoreButton = setButtonLoading($(this), "Sending...");
+            $.ajax({
+                url: window.location.origin + "/items/" + itemId + "/suggest-match",
+                method: "POST",
+                headers: {
+                    ...authHeaders(),
+                    "Content-Type": "application/json"
+                },
+                data: JSON.stringify({
+                    lost_item_id: $("#lostItemSelect").val()
+                }),
+                success(res) {
+                    showToast(res.message, "success");
+                    suggestMatchModal.hide();
+                },
+                error(xhr) {
+                    showToast(xhr.responseJSON?.message || "Failed to send match suggestion", "error");
+                },
+                complete() {
+                    restoreButton();
+                }
+            });
+        });
+
+        loadItem();
+    </script>
 
 </body>
 

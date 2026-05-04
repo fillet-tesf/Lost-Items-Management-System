@@ -47,16 +47,44 @@
     </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/ui.js"></script>
 
     <script>
         const params = new URLSearchParams(window.location.search);
         const itemId = params.get("id");
 
         const token = localStorage.getItem("token");
+        const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
 
         if (!token) {
             window.location.href = "login.html";
         }
+
+        function showToast(message, type = "info") {
+            if (window.LIMS_UI && window.LIMS_UI.showToast) {
+                window.LIMS_UI.showToast(message, type);
+                return;
+            }
+            console.log(message);
+        }
+
+        function setButtonLoading($button, label) {
+            if (window.LIMS_UI && window.LIMS_UI.setButtonLoading) {
+                return window.LIMS_UI.setButtonLoading($button, label);
+            }
+            const originalText = $button.text();
+            $button.prop("disabled", true).text(label);
+            return function restore() {
+                $button.prop("disabled", false).text(originalText);
+            };
+        }
+
+        $("#dateContainer").html(`
+            <div class="text-muted py-2">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading item details...
+            </div>
+        `);
 
         // Load item
         $.ajax({
@@ -90,6 +118,8 @@
         // Update item
         $("#editItemForm").submit(function (e) {
             e.preventDefault();
+            const $submitButton = $(this).find('button[type="submit"]').first();
+            const restoreButton = setButtonLoading($submitButton, "Updating...");
 
             $.ajax({
                 url: window.location.origin + "/items/" + itemId,
@@ -103,11 +133,16 @@
                     description: $("#description").val()
                 }),
                 success: function () {
-                    alert("Item updated successfully");
-                    window.location.href = "user-dashboard.html";
+                    showToast("Item updated successfully", "success");
+                    window.location.href = currentUser.role === "admin"
+                        ? "admin-dashboard.html"
+                        : "user-dashboard.html";
                 },
                 error: function () {
-                    alert("Failed to update item");
+                    showToast("Failed to update item", "error");
+                },
+                complete: function () {
+                    restoreButton();
                 }
             });
         });
