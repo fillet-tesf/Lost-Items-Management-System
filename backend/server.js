@@ -131,8 +131,9 @@ function getBadgePayload(summary) {
   if (summary.return_badge === "blue") {
     badges.push({
       key: "blue",
-      label: "Blue Badge",
+      label: "Trusted Beginner",
       color: "primary",
+      icon: "bi-award-fill",
       tooltip: "This user has successfully returned 1 item",
     });
   }
@@ -140,8 +141,9 @@ function getBadgePayload(summary) {
   if (summary.return_badge === "green") {
     badges.push({
       key: "green",
-      label: "Green Badge",
+      label: "Trusted Helper",
       color: "success",
+      icon: "bi-star-fill",
       tooltip: "This user has successfully returned multiple items",
     });
   }
@@ -150,9 +152,9 @@ function getBadgePayload(summary) {
     badges.push({
       key: "warning",
       label: "Warning",
-      color: "warning",
-      tooltip:
-        "Warning: This user has received multiple reports. تعامل carefully.",
+      color: "danger",
+      icon: "bi-exclamation-triangle-fill",
+      tooltip: "Warning: This user has received multiple reports. تعامل carefully.",
     });
   }
 
@@ -1432,8 +1434,27 @@ app.get("/items", (req, res) => {
       return res.status(500).json({ message: "Failed to fetch items" });
     }
 
+    const mappedResults = results.map((item) => {
+      const successfulReturns = Number(item.reporter_successful_returns || 0);
+      const reportsReceived = Number(item.reporter_reports_received || 0);
+      const warningBadge =
+        reportsReceived >= WARNING_REPORT_THRESHOLD &&
+        !Boolean(item.reporter_warning_cleared);
+      let returnBadge = null;
+      if (successfulReturns >= 2) returnBadge = "green";
+      else if (successfulReturns >= 1) returnBadge = "blue";
+
+      return {
+        ...item,
+        reporter_badges: getBadgePayload({
+          return_badge: returnBadge,
+          warning_badge: warningBadge,
+        }),
+      };
+    });
+
     if (!pagination.enabled) {
-      return res.json(results);
+      return res.json(mappedResults);
     }
 
     const countSql = `
@@ -1451,7 +1472,7 @@ app.get("/items", (req, res) => {
       const total = countResults[0].total;
 
       res.json({
-        items: results,
+        items: mappedResults,
         pagination: {
           page: pagination.page,
           limit: pagination.limit,
@@ -1485,7 +1506,36 @@ app.get("/items/:id", (req, res) => {
       categories.name AS category,
       locations.name AS location,
       item_statuses.status_name AS status,
-      users.full_name AS reported_by
+      users.full_name AS reported_by,
+      (
+        SELECT AVG(r.rating)
+        FROM user_ratings r
+        WHERE r.to_user = users.id
+      ) AS reporter_average_rating,
+      (
+        SELECT COUNT(*)
+        FROM user_ratings r
+        WHERE r.to_user = users.id
+      ) AS reporter_rating_count,
+      (
+        SELECT COUNT(*)
+        FROM item_claims ic
+        JOIN items fi ON ic.item_id = fi.id
+        WHERE fi.user_id = users.id
+          AND fi.item_type = 'found'
+          AND ic.status = 'completed'
+      ) AS reporter_successful_returns,
+      (
+        (SELECT COUNT(*)
+         FROM reported_items rp
+         JOIN items ri ON rp.item_id = ri.id
+         WHERE ri.user_id = users.id)
+        +
+        (SELECT COUNT(*)
+         FROM user_reports ur
+         WHERE ur.reported_user_id = users.id)
+      ) AS reporter_reports_received,
+      COALESCE(rep_flags.warning_cleared, 0) AS reporter_warning_cleared
     FROM items
     JOIN categories ON items.category_id = categories.id
     JOIN locations ON items.location_id = locations.id
@@ -1517,6 +1567,8 @@ app.get("/items/:id", (req, res) => {
 
     res.json({
       ...item,
+      reporter_total_completed_returns: successfulReturns,
+      reporter_total_reports_received: reportsReceived,
       reporter_badges: getBadgePayload({
         return_badge: returnBadge,
         warning_badge: warningBadge,
@@ -1779,7 +1831,34 @@ app.get("/matches", authMiddleware, async (req, res) => {
          found.found_date,
          fc.name AS found_category,
          fl.name AS found_location,
-         finder.full_name AS found_reported_by
+         finder.full_name AS found_reported_by,
+         (
+           SELECT AVG(r.rating)
+           FROM user_ratings r
+           WHERE r.to_user = finder.id
+         ) AS found_reporter_average_rating,
+         (
+           SELECT COUNT(*)
+           FROM user_ratings r
+           WHERE r.to_user = finder.id
+         ) AS found_reporter_rating_count,
+         (
+           SELECT COUNT(*)
+           FROM item_claims ic2
+           JOIN items fi2 ON ic2.item_id = fi2.id
+           WHERE fi2.user_id = finder.id
+             AND fi2.item_type = 'found'
+             AND ic2.status = 'completed'
+         ) AS found_reporter_successful_returns,
+         (
+           (SELECT COUNT(*)
+            FROM reported_items rp2
+            JOIN items ri2 ON rp2.item_id = ri2.id
+            WHERE ri2.user_id = finder.id)
+           +
+           (SELECT COUNT(*) FROM user_reports ur2 WHERE ur2.reported_user_id = finder.id)
+         ) AS found_reporter_reports_received,
+         COALESCE(rep_flags.warning_cleared, 0) AS found_reporter_warning_cleared
        FROM matches m
        JOIN items lost ON m.lost_item_id = lost.id
        JOIN items found ON m.found_item_id = found.id
@@ -1788,6 +1867,7 @@ app.get("/matches", authMiddleware, async (req, res) => {
        JOIN categories fc ON found.category_id = fc.id
        JOIN locations fl ON found.location_id = fl.id
        JOIN users finder ON found.user_id = finder.id
+       LEFT JOIN user_reputation_flags rep_flags ON rep_flags.user_id = finder.id
        LEFT JOIN item_claims ic
          ON ic.item_id = found.id
         AND ic.claimant_id = lost.user_id
@@ -1824,7 +1904,30 @@ app.get("/matches", authMiddleware, async (req, res) => {
         .values(),
     );
 
-    res.json(uniqueMatches);
+    const enrichedMatches = uniqueMatches.map((match) => {
+      const successfulReturns = Number(
+        match.found_reporter_successful_returns || 0,
+      );
+      const reportsReceived = Number(
+        match.found_reporter_reports_received || 0,
+      );
+      const warningBadge =
+        reportsReceived >= WARNING_REPORT_THRESHOLD &&
+        !Boolean(match.found_reporter_warning_cleared);
+      let returnBadge = null;
+      if (successfulReturns >= 2) returnBadge = "green";
+      else if (successfulReturns >= 1) returnBadge = "blue";
+
+      return {
+        ...match,
+        found_reporter_badges: getBadgePayload({
+          return_badge: returnBadge,
+          warning_badge: warningBadge,
+        }),
+      };
+    });
+
+    res.json(enrichedMatches);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch matches" });
   }
@@ -2130,7 +2233,55 @@ app.get("/notifications", authMiddleware, async (req, res) => {
          lost.user_id AS lost_owner_id,
          found.id AS found_item_id,
          found.title AS found_title,
-         found.user_id AS found_owner_id
+         found.user_id AS found_owner_id,
+         claimant.id AS claimant_id,
+         claimant.full_name AS claimant_name,
+         (
+           SELECT AVG(r.rating)
+           FROM user_ratings r
+           WHERE r.to_user = claimant.id
+         ) AS claimant_rating,
+         (
+           SELECT COUNT(*)
+           FROM user_ratings r
+           WHERE r.to_user = claimant.id
+         ) AS claimant_rating_count,
+         (
+           SELECT COUNT(*)
+           FROM item_claims ic2
+           WHERE ic2.claimant_id = claimant.id
+         ) AS total_claims,
+         (
+           SELECT COUNT(*)
+           FROM item_claims ic2
+           WHERE ic2.claimant_id = claimant.id
+             AND ic2.status = 'completed'
+         ) AS successful_claims,
+         (
+           SELECT COUNT(*)
+           FROM item_claims ic2
+           WHERE ic2.claimant_id = claimant.id
+             AND ic2.status = 'rejected'
+         ) AS rejected_claims,
+         (
+           (SELECT COUNT(*)
+            FROM reported_items rp2
+            JOIN items ri2 ON rp2.item_id = ri2.id
+            WHERE ri2.user_id = claimant.id)
+           +
+           (SELECT COUNT(*)
+            FROM user_reports ur2
+            WHERE ur2.reported_user_id = claimant.id)
+         ) AS reports_received,
+         (
+           SELECT COUNT(*)
+           FROM item_claims ic2
+           JOIN items fi2 ON ic2.item_id = fi2.id
+           WHERE fi2.user_id = claimant.id
+             AND fi2.item_type = 'found'
+             AND ic2.status = 'completed'
+         ) AS claimant_successful_returns,
+         COALESCE(claimant_flags.warning_cleared, 0) AS claimant_warning_cleared
        FROM notifications n
        LEFT JOIN matches m ON n.related_match_id = m.id
        LEFT JOIN items lost ON m.lost_item_id = lost.id
@@ -2138,18 +2289,35 @@ app.get("/notifications", authMiddleware, async (req, res) => {
        LEFT JOIN item_claims ic
          ON ic.item_id = found.id
         AND ic.claimant_id = lost.user_id
+       LEFT JOIN users claimant ON claimant.id = lost.user_id
+       LEFT JOIN user_reputation_flags claimant_flags ON claimant_flags.user_id = claimant.id
        WHERE n.user_id = ?
        ORDER BY n.created_at DESC`,
       [req.user.userId],
     );
 
-    const mappedNotifications = notifications.map((notification) => ({
-      ...notification,
-      share_contact_required:
-        notification.title === CONTACT_REQUEST_TITLE &&
-        notification.claim_status === "pending" &&
-        Number(notification.found_owner_id) === Number(req.user.userId),
-    }));
+    const mappedNotifications = notifications.map((notification) => {
+      const successfulReturns = Number(notification.claimant_successful_returns || 0);
+      const reportsReceived = Number(notification.reports_received || 0);
+      const warningBadge =
+        reportsReceived >= WARNING_REPORT_THRESHOLD &&
+        !Boolean(notification.claimant_warning_cleared);
+      let returnBadge = null;
+      if (successfulReturns >= 2) returnBadge = "green";
+      else if (successfulReturns >= 1) returnBadge = "blue";
+
+      return {
+        ...notification,
+        claimant_badges: getBadgePayload({
+          return_badge: returnBadge,
+          warning_badge: warningBadge,
+        }),
+        share_contact_required:
+          notification.title === CONTACT_REQUEST_TITLE &&
+          notification.claim_status === "pending" &&
+          Number(notification.found_owner_id) === Number(req.user.userId),
+      };
+    });
 
     res.json(mappedNotifications);
   } catch (error) {
@@ -2404,13 +2572,41 @@ app.get("/claims/incoming", authMiddleware, async (req, res) => {
          lost.id AS lost_item_id,
          lost.title AS lost_title,
          claimant.id AS claimant_id,
-         claimant.full_name AS claimant_name
+         claimant.full_name AS claimant_name,
+         (
+           SELECT AVG(r.rating)
+           FROM user_ratings r
+           WHERE r.to_user = claimant.id
+         ) AS claimant_average_rating,
+         (
+           SELECT COUNT(*)
+           FROM user_ratings r
+           WHERE r.to_user = claimant.id
+         ) AS claimant_rating_count,
+         (
+           SELECT COUNT(*)
+           FROM item_claims ic2
+           JOIN items fi2 ON ic2.item_id = fi2.id
+           WHERE fi2.user_id = claimant.id
+             AND fi2.item_type = 'found'
+             AND ic2.status = 'completed'
+         ) AS claimant_successful_returns,
+         (
+           (SELECT COUNT(*)
+            FROM reported_items rp2
+            JOIN items ri2 ON rp2.item_id = ri2.id
+            WHERE ri2.user_id = claimant.id)
+           +
+           (SELECT COUNT(*) FROM user_reports ur2 WHERE ur2.reported_user_id = claimant.id)
+         ) AS claimant_reports_received,
+         COALESCE(claimant_flags.warning_cleared, 0) AS claimant_warning_cleared
        FROM item_claims ic
        JOIN items found ON ic.item_id = found.id
        JOIN matches m ON m.found_item_id = found.id
        JOIN items lost ON m.lost_item_id = lost.id
         AND lost.user_id = ic.claimant_id
        JOIN users claimant ON claimant.id = ic.claimant_id
+       LEFT JOIN user_reputation_flags claimant_flags ON claimant_flags.user_id = claimant.id
        WHERE found.user_id = ?
        ORDER BY FIELD(ic.status, 'pending', 'contact_shared', 'in_progress', 'completed', 'rejected', 'expired'),
                 ic.created_at DESC`,
@@ -2427,7 +2623,24 @@ app.get("/claims/incoming", authMiddleware, async (req, res) => {
           return accumulator;
         }, new Map())
         .values(),
-    );
+    ).map((claim) => {
+      const successfulReturns = Number(claim.claimant_successful_returns || 0);
+      const reportsReceived = Number(claim.claimant_reports_received || 0);
+      const warningBadge =
+        reportsReceived >= WARNING_REPORT_THRESHOLD &&
+        !Boolean(claim.claimant_warning_cleared);
+      let returnBadge = null;
+      if (successfulReturns >= 2) returnBadge = "green";
+      else if (successfulReturns >= 1) returnBadge = "blue";
+
+      return {
+        ...claim,
+        claimant_badges: getBadgePayload({
+          return_badge: returnBadge,
+          warning_badge: warningBadge,
+        }),
+      };
+    });
 
     res.json(uniqueClaims);
   } catch (error) {
@@ -3410,7 +3623,27 @@ app.get("/admin/claims", authMiddleware, async (req, res) => {
          finder.id AS finder_id,
          finder.full_name AS finder_name,
          claimant.id AS claimant_id,
-         claimant.full_name AS claimant_name
+         claimant.full_name AS claimant_name,
+         (
+           SELECT AVG(r.rating)
+           FROM user_ratings r
+           WHERE r.to_user = claimant.id
+         ) AS claimant_average_rating,
+         (
+           SELECT COUNT(*)
+           FROM user_ratings r
+           WHERE r.to_user = claimant.id
+         ) AS claimant_rating_count,
+         (
+           SELECT AVG(r.rating)
+           FROM user_ratings r
+           WHERE r.to_user = finder.id
+         ) AS finder_average_rating,
+         (
+           SELECT COUNT(*)
+           FROM user_ratings r
+           WHERE r.to_user = finder.id
+         ) AS finder_rating_count
        FROM item_claims ic
        JOIN items found ON ic.item_id = found.id
        JOIN matches m ON m.found_item_id = found.id
@@ -3433,7 +3666,23 @@ app.get("/admin/claims", authMiddleware, async (req, res) => {
         .values(),
     );
 
-    res.json(uniqueClaims);
+    const userIds = Array.from(
+      new Set(
+        uniqueClaims.flatMap((claim) => [claim.claimant_id, claim.finder_id]),
+      ),
+    );
+    const summaryEntries = await Promise.all(
+      userIds.map(async (id) => [id, await getUserReputationSummary(id)]),
+    );
+    const summaryMap = Object.fromEntries(summaryEntries);
+
+    const enrichedClaims = uniqueClaims.map((claim) => ({
+      ...claim,
+      claimant_badges: summaryMap[claim.claimant_id]?.badges || [],
+      finder_badges: summaryMap[claim.finder_id]?.badges || [],
+    }));
+
+    res.json(enrichedClaims);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch claims" });
   }
@@ -3664,13 +3913,68 @@ app.get("/admin/users", authMiddleware, (req, res) => {
   }
 
   db.query(
-    "SELECT id, full_name, email, role, created_at FROM users",
+    `SELECT
+       users.id,
+       users.full_name,
+       users.email,
+       users.role,
+       users.created_at,
+       (
+         SELECT AVG(r.rating)
+         FROM user_ratings r
+         WHERE r.to_user = users.id
+       ) AS average_rating,
+       (
+         SELECT COUNT(*)
+         FROM user_ratings r
+         WHERE r.to_user = users.id
+       ) AS rating_count,
+       (
+         SELECT COUNT(*)
+         FROM item_claims ic
+         JOIN items fi ON ic.item_id = fi.id
+         WHERE fi.user_id = users.id
+           AND fi.item_type = 'found'
+           AND ic.status = 'completed'
+       ) AS successful_returns,
+       (
+         (SELECT COUNT(*)
+          FROM reported_items rp
+          JOIN items ri ON rp.item_id = ri.id
+          WHERE ri.user_id = users.id)
+         +
+         (SELECT COUNT(*)
+          FROM user_reports ur
+          WHERE ur.reported_user_id = users.id)
+       ) AS reports_received,
+       COALESCE(rep_flags.warning_cleared, 0) AS warning_cleared
+     FROM users
+     LEFT JOIN user_reputation_flags rep_flags ON rep_flags.user_id = users.id`,
     (err, results) => {
       if (err) {
         return res.status(500).json({ message: "Failed to fetch users" });
       }
 
-      res.json(results);
+      const enriched = results.map((entry) => {
+        const successfulReturns = Number(entry.successful_returns || 0);
+        const reportsReceived = Number(entry.reports_received || 0);
+        const warningBadge =
+          reportsReceived >= WARNING_REPORT_THRESHOLD &&
+          !Boolean(entry.warning_cleared);
+        let returnBadge = null;
+        if (successfulReturns >= 2) returnBadge = "green";
+        else if (successfulReturns >= 1) returnBadge = "blue";
+
+        return {
+          ...entry,
+          badges: getBadgePayload({
+            return_badge: returnBadge,
+            warning_badge: warningBadge,
+          }),
+        };
+      });
+
+      res.json(enriched);
     },
   );
 });
@@ -3784,4 +4088,5 @@ app.delete("/admin/users/:id", authMiddleware, (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
 

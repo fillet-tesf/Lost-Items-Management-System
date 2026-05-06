@@ -106,32 +106,25 @@ function getClaimStatus(match) {
   return match.claim_status || match.match_status;
 }
 
-function renderStarRating(value, count = 0) {
-  const rating = Number(value || 0);
-  if (!count) return "<span class='text-muted'>No ratings yet</span>";
-  const rounded = Math.round(rating);
-  let stars = "";
-  for (let index = 1; index <= 5; index += 1) {
-    stars += `<i class="bi ${index <= rounded ? "bi-star-fill text-warning" : "bi-star text-muted"}"></i>`;
+function renderUserInline(user) {
+  if (window.LIMS_UI && window.LIMS_UI.renderUserBadge) {
+    return window.LIMS_UI.renderUserBadge(user || {});
   }
-  return `<span class="d-inline-flex align-items-center gap-1">${stars}<span class="ms-1">${rating.toFixed(1)} / 5</span></span>`;
+  return `<strong>${escapeHtml(user?.full_name || "Unknown user")}</strong>`;
+}
+
+function renderStarRating(value, count = 0) {
+  if (window.LIMS_UI && window.LIMS_UI.renderStarRating) {
+    return window.LIMS_UI.renderStarRating(value, count);
+  }
+  return "<span class='text-muted'>No ratings yet</span>";
 }
 
 function renderUserBadges(badges = []) {
-  if (!badges.length) {
-    return "<span class='text-muted small'>No badges yet</span>";
+  if (window.LIMS_UI && window.LIMS_UI.renderUserBadges) {
+    return window.LIMS_UI.renderUserBadges(badges);
   }
-
-  return badges
-    .map(
-      (badge) => `
-        <span class="badge bg-${escapeHtml(badge.color || "secondary")} badge-help ms-1"
-          data-bs-toggle="tooltip"
-          title="${escapeHtml(badge.tooltip || badge.label || "")}">
-          ${escapeHtml(badge.label || "Badge")}
-        </span>`,
-    )
-    .join("");
+  return "";
 }
 
 function activateTooltips() {
@@ -760,7 +753,12 @@ function loadMatches() {
                         </div>
                         <div class="col-md-6">
                           <small class="text-muted d-block">Reported By</small>
-                          <strong>${escapeHtml(match.found_reported_by)}</strong>
+                          ${renderUserInline({
+                            full_name: match.found_reported_by,
+                            average_rating: match.found_reporter_average_rating,
+                            rating_count: match.found_reporter_rating_count,
+                            badges: match.found_reporter_badges || [],
+                          })}
                         </div>
                         <div class="col-md-6">
                           <small class="text-muted d-block">Match Confidence</small>
@@ -811,6 +809,7 @@ function loadMatches() {
         .join("");
 
       $("#matchesList").html(cards);
+      activateTooltips();
     },
     error() {
       $("#matchesList").html(
@@ -854,7 +853,12 @@ function loadIncomingClaims() {
                     <div class="d-flex justify-content-between align-items-start gap-3">
                       <div>
                         <h5 class="mb-1">${escapeHtml(claim.found_title)}</h5>
-                        <p class="text-muted mb-1">Requested by ${escapeHtml(claim.claimant_name)} for lost item "${escapeHtml(claim.lost_title)}"</p>
+                        <p class="text-muted mb-1">Requested by ${renderUserInline({
+                          full_name: claim.claimant_name,
+                          average_rating: claim.claimant_average_rating,
+                          rating_count: claim.claimant_rating_count,
+                          badges: claim.claimant_badges || [],
+                        })} for lost item "${escapeHtml(claim.lost_title)}"</p>
                       </div>
                       ${getStatusBadge(claimStatus)}
                     </div>
@@ -905,6 +909,7 @@ function loadIncomingClaims() {
         .join("");
 
       $("#incomingClaimsList").html(cards);
+      activateTooltips();
     },
     error() {
       $("#incomingClaimsList").html(
@@ -944,6 +949,20 @@ function loadNotifications() {
                   <div>
                     <h5 class="mb-1">${escapeHtml(notification.title)}</h5>
                     <p class="mb-2">${escapeHtml(notification.message)}</p>
+                    ${
+                      notification.share_contact_required
+                        ? `<div class="small mb-2">
+                             ${renderUserInline({
+                               full_name: notification.claimant_name,
+                               average_rating: notification.claimant_rating,
+                               rating_count: notification.claimant_rating ? 1 : 0,
+                               badges: notification.claimant_badges || [],
+                             })}
+                             <div class="text-muted mt-1">Claims: ${Number(notification.total_claims || 0)} total (${Number(notification.successful_claims || 0)} successful, ${Number(notification.rejected_claims || 0)} rejected)</div>
+                             <div class="text-muted">Reports: ${Number(notification.reports_received || 0)}</div>
+                           </div>`
+                        : ""
+                    }
                     <div class="small text-muted">${formatDate(notification.created_at)}</div>
                   </div>
                   <div class="d-flex flex-column align-items-end gap-2">
@@ -965,6 +984,7 @@ function loadNotifications() {
         .join("");
 
       $("#notificationsList").html(cards);
+      activateTooltips();
     },
     error() {
       $("#notificationsList").html(
@@ -1238,7 +1258,12 @@ function loadUsers() {
         .map(
           (entry) => `
             <tr>
-              <td><a class="custom-link" href="${getAdminUserUrl(entry.id)}"><i class="bi bi-person"></i>${escapeHtml(entry.full_name)}</a></td>
+              <td><a class="custom-link" href="${getAdminUserUrl(entry.id)}"><i class="bi bi-person"></i>${renderUserInline({
+                full_name: entry.full_name,
+                average_rating: entry.average_rating,
+                rating_count: entry.rating_count,
+                badges: entry.badges || [],
+              })}</a></td>
               <td>${escapeHtml(entry.email)}</td>
               <td>${escapeHtml(entry.role)}</td>
               <td>${new Date(entry.created_at).toLocaleDateString()}</td>
@@ -1250,6 +1275,7 @@ function loadUsers() {
         .join("");
 
       $("#usersTable").html(rows);
+      activateTooltips();
     },
   });
 }
@@ -1305,8 +1331,18 @@ function loadAdminClaims(group) {
               (claim) => `
                 <tr>
                   <td><a class="custom-link" href="${getItemDetailsUrl(claim.found_item_id)}"><i class="bi bi-box-seam"></i>${escapeHtml(claim.found_title)}</a></td>
-                  <td><a class="custom-link" href="${getAdminUserUrl(claim.claimant_id)}"><i class="bi bi-person"></i>${escapeHtml(claim.claimant_name)}</a></td>
-                  <td><a class="custom-link" href="${getAdminUserUrl(claim.finder_id)}"><i class="bi bi-person"></i>${escapeHtml(claim.finder_name)}</a></td>
+                  <td><a class="custom-link" href="${getAdminUserUrl(claim.claimant_id)}"><i class="bi bi-person"></i>${renderUserInline({
+                    full_name: claim.claimant_name,
+                    average_rating: claim.claimant_average_rating,
+                    rating_count: claim.claimant_rating_count,
+                    badges: claim.claimant_badges || [],
+                  })}</a></td>
+                  <td><a class="custom-link" href="${getAdminUserUrl(claim.finder_id)}"><i class="bi bi-person"></i>${renderUserInline({
+                    full_name: claim.finder_name,
+                    average_rating: claim.finder_average_rating,
+                    rating_count: claim.finder_rating_count,
+                    badges: claim.finder_badges || [],
+                  })}</a></td>
                   <td>${getStatusBadge(claim.claim_status)}</td>
                   <td>${claim.delivered_confirmed ? "Yes" : "No"}</td>
                   <td>${claim.received_confirmed ? "Yes" : "No"}</td>
@@ -1320,6 +1356,7 @@ function loadAdminClaims(group) {
         : "<tr><td colspan='8' class='text-center'>No claims found.</td></tr>";
 
       $("#adminClaimsTable").html(rows);
+      activateTooltips();
     },
   });
 }

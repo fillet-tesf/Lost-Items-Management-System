@@ -143,7 +143,53 @@
     `);
   }
 
+  function renderStarRating(value, count = 0) {
+    const rating = Number(value || 0);
+    if (!count) {
+      return `<span class="text-muted small">No ratings yet</span>`;
+    }
+    return `
+      <span class="d-inline-flex align-items-center gap-1 small" data-bs-toggle="tooltip" title="${escapeHtml(rating.toFixed(1))} out of 5 based on ${escapeHtml(count)} rating(s).">
+        <i class="bi bi-star-fill text-warning"></i>
+        <span>${escapeHtml(rating.toFixed(1))}/5</span>
+      </span>
+    `;
+  }
+
+  function renderUserBadges(badges = []) {
+    if (!Array.isArray(badges) || !badges.length) return "";
+    return badges
+      .map((badge) => {
+        const color = escapeHtml(badge.color || "secondary");
+        const icon = escapeHtml(badge.icon || "bi-award");
+        const tooltip = escapeHtml(badge.tooltip || badge.label || "Badge");
+        return `
+          <span class="d-inline-flex align-items-center justify-content-center ms-1 text-${color}"
+            data-bs-toggle="tooltip"
+            title="${tooltip}">
+            <i class="bi ${icon}"></i>
+          </span>
+        `;
+      })
+      .join("");
+  }
+
+  function renderUserBadge(user = {}) {
+    const name = escapeHtml(user.full_name || user.name || "Unknown user");
+    return `
+      <span class="d-inline-flex align-items-center flex-wrap gap-1">
+        <strong class="text-dark">${name}</strong>
+        ${renderStarRating(user.average_rating, Number(user.rating_count || 0))}
+        ${renderUserBadges(user.badges || [])}
+      </span>
+    `;
+  }
+
   window.LIMS_UI = {
+    escapeHtml,
+    renderStarRating,
+    renderUserBadges,
+    renderUserBadge,
     showToast,
     showConfirm,
     setButtonLoading,

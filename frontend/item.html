@@ -94,28 +94,11 @@
                 .replace(/'/g, "&#39;");
         }
 
-        function renderStarRating(value, count = 0) {
-            const rating = Number(value || 0);
-            if (!count) return "<span class='text-muted'>No ratings yet</span>";
-            const rounded = Math.round(rating);
-            let stars = "";
-            for (let index = 1; index <= 5; index += 1) {
-                stars += `<i class="bi ${index <= rounded ? "bi-star-fill text-warning" : "bi-star text-muted"}"></i>`;
+        function renderUserInline(userInfo) {
+            if (window.LIMS_UI && window.LIMS_UI.renderUserBadge) {
+                return window.LIMS_UI.renderUserBadge(userInfo);
             }
-            return `<span class="d-inline-flex align-items-center gap-1" data-bs-toggle="tooltip" title="${rating.toFixed(1)} out of 5 based on ${count} rating(s).">${stars}<span class="ms-1">${rating.toFixed(1)} / 5</span></span>`;
-        }
-
-        function renderUserBadges(badges = []) {
-            if (!Array.isArray(badges) || !badges.length) {
-                return "<span class='text-muted'>No badges</span>";
-            }
-            return badges.map((badge) => `
-                <span class="badge bg-${escapeHtml(badge.color || "secondary")} ms-1"
-                    data-bs-toggle="tooltip"
-                    title="${escapeHtml(badge.tooltip || badge.label || "")}">
-                    ${escapeHtml(badge.label || "Badge")}
-                </span>
-            `).join("");
+            return `<strong class="text-dark">${escapeHtml(userInfo.full_name)}</strong>`;
         }
 
         function activateTooltips() {
@@ -156,9 +139,12 @@
                 : '<span class="badge bg-success">Found Item</span>';
             const reportedBy = `
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <strong class="text-dark">${escapeHtml(item.reported_by)}</strong>
-                    ${renderStarRating(item.reporter_average_rating, item.reporter_rating_count)}
-                    ${renderUserBadges(item.reporter_badges || [])}
+                    ${renderUserInline({
+                        full_name: item.reported_by,
+                        average_rating: item.reporter_average_rating,
+                        rating_count: item.reporter_rating_count,
+                        badges: item.reporter_badges || []
+                    })}
                 </div>
             `;
 
