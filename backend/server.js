@@ -612,6 +612,150 @@ async function removeItemImage(imageUrl) {
   }
 }
 
+async function deleteUserAccountWithDependencies(
+  userId,
+  { contextLabel = "delete-user" } = {},
+) {
+  console.log(`[${contextLabel}] starting user deletion for user_id=${userId}`);
+
+  const userRows = await queryAsync(
+    "SELECT id, role FROM users WHERE id = ? LIMIT 1",
+    [userId],
+  );
+
+  if (!userRows.length) {
+    const missingUserError = new Error("User not found");
+    missingUserError.code = "USER_NOT_FOUND";
+    throw missingUserError;
+  }
+
+  const ownedItems = await queryAsync(
+    "SELECT id, image_url FROM items WHERE user_id = ?",
+    [userId],
+  );
+  const ownedItemIds = ownedItems.map((item) => item.id);
+
+  const matchRows = ownedItemIds.length
+    ? await queryAsync(
+        `SELECT id
+         FROM matches
+         WHERE lost_item_id IN (${ownedItemIds.map(() => "?").join(", ")})
+            OR found_item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
+        [...ownedItemIds, ...ownedItemIds],
+      )
+    : [];
+  const matchIds = matchRows.map((row) => row.id);
+
+  console.log(
+    `[${contextLabel}] owned_items=${ownedItemIds.length}, related_matches=${matchIds.length}`,
+  );
+
+  const deleteForOwnedItems = async (sqlPrefix, sqlSuffix = "", baseParams = []) => {
+    if (!ownedItemIds.length) {
+      return;
+    }
+
+    await queryAsync(
+      `${sqlPrefix} IN (${ownedItemIds.map(() => "?").join(", ")})${sqlSuffix}`,
+      [...baseParams, ...ownedItemIds],
+    );
+  };
+
+  const deleteForRelatedMatches = async (
+    sqlPrefix,
+    sqlSuffix = "",
+    baseParams = [],
+  ) => {
+    if (!matchIds.length) {
+      return;
+    }
+
+    await queryAsync(
+      `${sqlPrefix} IN (${matchIds.map(() => "?").join(", ")})${sqlSuffix}`,
+      [...baseParams, ...matchIds],
+    );
+  };
+
+  try {
+    await queryAsync("START TRANSACTION");
+    console.log(`[${contextLabel}] transaction started`);
+
+    await queryAsync("DELETE FROM notifications WHERE user_id = ?", [userId]);
+    await deleteForOwnedItems("DELETE FROM notifications WHERE related_item_id");
+    await deleteForRelatedMatches(
+      "DELETE FROM notifications WHERE related_match_id",
+    );
+
+    await queryAsync(
+      "DELETE FROM badge_appeals WHERE user_id = ? OR reviewed_by = ?",
+      [userId, userId],
+    );
+    await queryAsync(
+      "DELETE FROM user_reputation_flags WHERE user_id = ? OR warning_cleared_by = ?",
+      [userId, userId],
+    );
+    await queryAsync(
+      "DELETE FROM admin_actions WHERE admin_id = ? OR (target_type = 'user' AND target_id = ?)",
+      [userId, userId],
+    );
+
+    await queryAsync(
+      "DELETE FROM user_reports WHERE reported_by = ? OR reported_user_id = ?",
+      [userId, userId],
+    );
+    await queryAsync(
+      "DELETE FROM user_ratings WHERE from_user = ? OR to_user = ?",
+      [userId, userId],
+    );
+    await queryAsync(
+      "DELETE FROM payment_requests WHERE user_id = ? OR admin_id = ?",
+      [userId, userId],
+    );
+    await queryAsync("DELETE FROM coin_transactions WHERE user_id = ?", [userId]);
+
+    await queryAsync("DELETE FROM item_claims WHERE claimant_id = ?", [userId]);
+    await deleteForOwnedItems("DELETE FROM item_claims WHERE item_id");
+
+    await queryAsync("DELETE FROM reported_items WHERE reported_by = ?", [userId]);
+    await deleteForOwnedItems("DELETE FROM reported_items WHERE item_id");
+
+    await queryAsync("DELETE FROM item_history WHERE user_id = ?", [userId]);
+    await deleteForOwnedItems("DELETE FROM item_history WHERE item_id");
+
+    if (ownedItemIds.length) {
+      await queryAsync(
+        `DELETE FROM matches
+         WHERE lost_item_id IN (${ownedItemIds.map(() => "?").join(", ")})
+            OR found_item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
+        [...ownedItemIds, ...ownedItemIds],
+      );
+    }
+
+    await queryAsync("DELETE FROM items WHERE user_id = ?", [userId]);
+    await queryAsync("DELETE FROM user_stats WHERE user_id = ?", [userId]);
+    await queryAsync("DELETE FROM users WHERE id = ?", [userId]);
+
+    await queryAsync("COMMIT");
+    console.log(`[${contextLabel}] transaction committed`);
+  } catch (error) {
+    try {
+      await queryAsync("ROLLBACK");
+      console.log(`[${contextLabel}] transaction rolled back`);
+    } catch (rollbackError) {
+      console.error(`[${contextLabel}] rollback failed:`, rollbackError);
+    }
+
+    console.error(`[${contextLabel}] deletion failed:`, error);
+    throw error;
+  }
+
+  for (const item of ownedItems) {
+    await removeItemImage(item.image_url);
+  }
+
+  console.log(`[${contextLabel}] completed successfully for user_id=${userId}`);
+}
+
 async function deleteRowsByIds(tableName, columnName, ids) {
   if (!ids.length) {
     return;
@@ -1161,100 +1305,13 @@ app.delete("/profile", authMiddleware, async (req, res) => {
   const userId = req.user.userId;
 
   try {
-    const ownedItems = await queryAsync(
-      "SELECT id, image_url FROM items WHERE user_id = ?",
-      [userId],
-    );
-    const ownedItemIds = ownedItems.map((item) => item.id);
-    const matchRows = ownedItemIds.length
-      ? await queryAsync(
-          `SELECT id
-           FROM matches
-           WHERE lost_item_id IN (${ownedItemIds.map(() => "?").join(", ")})
-              OR found_item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
-          [...ownedItemIds, ...ownedItemIds],
-        )
-      : [];
-    const matchIds = matchRows.map((match) => match.id);
-
-    await queryAsync("START TRANSACTION");
-
-    await queryAsync(
-      `DELETE FROM notifications
-       WHERE user_id = ?
-          OR related_item_id IN (${ownedItemIds.length ? ownedItemIds.map(() => "?").join(", ") : "NULL"})
-          OR related_match_id IN (${matchIds.length ? matchIds.map(() => "?").join(", ") : "NULL"})`,
-      [userId, ...ownedItemIds, ...matchIds],
-    );
-
-    if (ownedItemIds.length) {
-      await queryAsync(
-        `DELETE FROM reported_items
-         WHERE reported_by = ?
-            OR item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
-        [userId, ...ownedItemIds],
-      );
-      await queryAsync(
-        `DELETE FROM item_history
-         WHERE user_id = ?
-            OR item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
-        [userId, ...ownedItemIds],
-      );
-      await queryAsync(
-        `DELETE FROM item_claims
-         WHERE claimant_id = ?
-            OR item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
-        [userId, ...ownedItemIds],
-      );
-      await queryAsync(
-        `DELETE FROM matches
-         WHERE lost_item_id IN (${ownedItemIds.map(() => "?").join(", ")})
-            OR found_item_id IN (${ownedItemIds.map(() => "?").join(", ")})`,
-        [...ownedItemIds, ...ownedItemIds],
-      );
-      await queryAsync(
-        `DELETE FROM items
-         WHERE user_id = ?`,
-        [userId],
-      );
-    } else {
-      await queryAsync("DELETE FROM item_claims WHERE claimant_id = ?", [
-        userId,
-      ]);
-    }
-
-    await queryAsync(
-      "DELETE FROM user_reports WHERE reported_by = ? OR reported_user_id = ?",
-      [userId, userId],
-    );
-    await queryAsync(
-      "DELETE FROM user_ratings WHERE from_user = ? OR to_user = ?",
-      [userId, userId],
-    );
-    await queryAsync(
-      "DELETE FROM payment_requests WHERE user_id = ? OR admin_id = ?",
-      [userId, userId],
-    );
-    await queryAsync("DELETE FROM coin_transactions WHERE user_id = ?", [
-      userId,
-    ]);
-    await queryAsync("DELETE FROM user_stats WHERE user_id = ?", [userId]);
-    await queryAsync("DELETE FROM users WHERE id = ?", [userId]);
-
-    await queryAsync("COMMIT");
-
-    for (const item of ownedItems) {
-      await removeItemImage(item.image_url);
-    }
+    await deleteUserAccountWithDependencies(userId, {
+      contextLabel: `DELETE /profile user_id=${userId}`,
+    });
 
     res.json({ message: "Account deleted successfully" });
   } catch (error) {
-    try {
-      await queryAsync("ROLLBACK");
-    } catch (rollbackError) {
-      console.error("Failed to rollback profile deletion:", rollbackError);
-    }
-
+    console.error(`[DELETE /profile] failed for user_id=${userId}:`, error);
     res.status(500).json({ message: "Failed to delete account" });
   }
 });
@@ -1390,6 +1447,7 @@ app.get("/items", (req, res) => {
     JOIN locations ON items.location_id = locations.id
     JOIN item_statuses ON items.item_status_id = item_statuses.id
     JOIN users ON items.user_id = users.id
+    LEFT JOIN user_reputation_flags rep_flags ON rep_flags.user_id = users.id
     WHERE item_statuses.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')
    `;
 
@@ -1429,8 +1487,12 @@ app.get("/items", (req, res) => {
     ? [...params, pagination.limit, pagination.offset]
     : params;
 
+  console.log("Items query SQL:", sql);
+  console.log("Items query params:", queryParams);
+
   db.query(sql, queryParams, (err, results) => {
     if (err) {
+      console.error("Items fetch error:", err);
       return res.status(500).json({ message: "Failed to fetch items" });
     }
 
@@ -1464,8 +1526,12 @@ app.get("/items", (req, res) => {
       ) AS filtered_items
     `;
 
+    console.log("Items count SQL:", countSql);
+    console.log("Items count params:", params);
+
     db.query(countSql, params, (countErr, countResults) => {
       if (countErr) {
+        console.error("Items count fetch error:", countErr);
         return res.status(500).json({ message: "Failed to fetch item count" });
       }
 
@@ -4069,20 +4135,57 @@ app.get("/admin/users/:id/details", authMiddleware, async (req, res) => {
 
 // admin delete user
 
-app.delete("/admin/users/:id", authMiddleware, (req, res) => {
+app.delete("/admin/users/:id", authMiddleware, async (req, res) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ message: "Admin only" });
   }
 
-  const userId = req.params.id;
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ message: "Invalid user id" });
+  }
 
-  db.query("DELETE FROM users WHERE id = ?", [userId], (err) => {
-    if (err) {
-      return res.status(500).json({ message: "Delete failed" });
+  if (userId === req.user.userId) {
+    return res.status(400).json({
+      message: "Use your own profile deletion flow for this account",
+    });
+  }
+
+  try {
+    const targetUserRows = await queryAsync(
+      "SELECT id, role FROM users WHERE id = ? LIMIT 1",
+      [userId],
+    );
+    if (!targetUserRows.length) {
+      return res.status(404).json({ message: "User not found" });
     }
 
+    if (targetUserRows[0].role === "admin") {
+      return res
+        .status(403)
+        .json({ message: "Admin accounts cannot be deleted here" });
+    }
+
+    await deleteUserAccountWithDependencies(userId, {
+      contextLabel: `DELETE /admin/users/${userId} by admin=${req.user.userId}`,
+    });
+
+    await queryAsync(
+      `INSERT INTO admin_actions (admin_id, action_type, target_id, target_type, details)
+       VALUES (?, 'delete_user', ?, 'user', ?)`,
+      [req.user.userId, userId, "Deleted user account and related records"],
+    ).catch((logError) => {
+      console.error(
+        `[DELETE /admin/users/${userId}] failed to write admin action log:`,
+        logError,
+      );
+    });
+
     res.json({ message: "User deleted" });
-  });
+  } catch (error) {
+    console.error(`[DELETE /admin/users/${userId}] failed:`, error);
+    res.status(500).json({ message: "Delete failed" });
+  }
 });
 
 app.listen(PORT, () => {
