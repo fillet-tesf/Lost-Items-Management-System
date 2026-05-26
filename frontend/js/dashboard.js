@@ -12,6 +12,7 @@ const STATUS_LABELS = {
   completed: "Completed",
   expired: "Expired",
   verified: "Verified",
+  approved: "Approved",
 };
 
 const STATUS_BADGES = {
@@ -25,6 +26,7 @@ const STATUS_BADGES = {
   completed: "success",
   expired: "dark",
   verified: "success",
+  approved: "success",
 };
 
 function notify(message, type = "info") {
@@ -1057,6 +1059,10 @@ function loadProfile() {
       $("#profileUploads").text(profile.total_uploaded || 0);
       $("#profileReturns").text(profile.successful_returns || 0);
       $("#profileClaims").text(profile.total_claims || 0);
+      $("#editEmailNotifications").prop(
+        "checked",
+        Number(profile.email_notifications ?? 1) === 1,
+      );
       const ratingCount = Number(profile.rating_count || 0);
       $("#profileRating").html(renderStarRating(profile.average_rating, ratingCount));
       $("#profileBadges").html(renderUserBadges(profile.badges || []));
@@ -1372,6 +1378,49 @@ function loadPaymentRequests() {
   });
 }
 
+function loadBadgeAppeals() {
+  $("#badgeAppealsTable").html(
+    "<tr><td colspan='7' class='text-center'><div class='spinner-border spinner-border-sm me-2'></div>Loading appeals...</td></tr>",
+  );
+  $.ajax({
+    url: window.location.origin + "/admin/badge-appeals",
+    method: "GET",
+    headers: authHeaders(),
+    success(appeals) {
+      const rows = appeals.length
+        ? appeals
+            .map(
+              (appeal) => `
+                <tr>
+                  <td><a class="custom-link" href="${getAdminUserUrl(appeal.user_id)}"><i class="bi bi-person"></i>${escapeHtml(appeal.full_name)}</a></td>
+                  <td>${escapeHtml(appeal.badge_type)}</td>
+                  <td>${escapeHtml(appeal.reason)}</td>
+                  <td>${getStatusBadge(appeal.status)}</td>
+                  <td>${formatDate(appeal.created_at)}</td>
+                  <td>${escapeHtml(appeal.admin_note || "-")}</td>
+                  <td>
+                    ${
+                      appeal.status === "pending"
+                        ? `<button class="btn btn-success btn-sm reviewBadgeAppeal" data-id="${appeal.id}" data-action="approve">Approve</button>
+                           <button class="btn btn-outline-danger btn-sm reviewBadgeAppeal" data-id="${appeal.id}" data-action="reject">Reject</button>`
+                        : '<span class="text-muted small">Reviewed</span>'
+                    }
+                  </td>
+                </tr>`,
+            )
+            .join("")
+        : "<tr><td colspan='7' class='text-center'>No badge appeals found.</td></tr>";
+
+      $("#badgeAppealsTable").html(rows);
+    },
+    error() {
+      $("#badgeAppealsTable").html(
+        "<tr><td colspan='7' class='text-center'>Failed to load badge appeals.</td></tr>",
+      );
+    },
+  });
+}
+
 function loadAdminClaims(group) {
   $.ajax({
     url: window.location.origin + "/admin/claims?group=" + group,
@@ -1525,6 +1574,11 @@ function renderProfileView() {
               <input id="editProfilePhone" class="form-control">
             </div>
             <hr>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input" type="checkbox" id="editEmailNotifications" checked>
+              <label class="form-check-label" for="editEmailNotifications">Email Notifications</label>
+              <div class="text-muted small">Receive important LIMS updates by email. In-app notifications will still continue either way.</div>
+            </div>
             <div class="mb-3">
               <label class="form-label">Current Password</label>
               <input id="editCurrentPassword" type="password" class="form-control" placeholder="Required only if changing password">
@@ -1658,6 +1712,30 @@ function openDashboardPage(page) {
       </div>
     `);
     loadPaymentRequests();
+    return;
+  }
+
+  if (page === "badge-appeals") {
+    $("#dashboardContent").html(`
+      <h3>Badge Appeals</h3>
+      <div class="card dashboard-panel p-3 mt-3 border-0 shadow-sm">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Badge</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Submitted</th>
+              <th>Admin Note</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="badgeAppealsTable"></tbody>
+        </table>
+      </div>
+    `);
+    loadBadgeAppeals();
     return;
   }
 
@@ -1979,6 +2057,45 @@ $(document).on("click", ".reviewPaymentRequest", function () {
       },
       error(xhr) {
         notify(xhr.responseJSON?.message || "Failed to review request", "error");
+      },
+      complete() {
+        restoreButton();
+      },
+    });
+  })();
+});
+
+$(document).on("click", ".reviewBadgeAppeal", function () {
+  (async () => {
+    const id = $(this).data("id");
+    const action = $(this).data("action");
+    const adminNote = await promptTextInput({
+      modalId: "badgeAppealReviewModal",
+      title: action === "approve" ? "Approve Appeal" : "Reject Appeal",
+      label: "Admin note (optional)",
+      placeholder: "Add context for the user",
+      confirmText: action === "approve" ? "Approve" : "Reject",
+      allowEmpty: true,
+      defaultValue: "",
+    });
+    if (adminNote === null) return;
+
+    const restoreButton = setActionLoading($(this), "Processing...");
+    $.ajax({
+      url: window.location.origin + "/admin/badge-appeals/" + id + "/review",
+      method: "POST",
+      contentType: "application/json",
+      headers: authHeaders(),
+      data: JSON.stringify({
+        action,
+        admin_note: adminNote,
+      }),
+      success(res) {
+        notify(res.message, "success");
+        loadBadgeAppeals();
+      },
+      error(xhr) {
+        notify(xhr.responseJSON?.message || "Failed to review appeal", "error");
       },
       complete() {
         restoreButton();
@@ -2309,6 +2426,7 @@ $(document).on("click", "#saveProfileBtn", function () {
   const currentPassword = $("#editCurrentPassword").val();
   const newPassword = $("#editNewPassword").val();
   const confirmNewPassword = $("#editConfirmNewPassword").val();
+  const emailNotifications = $("#editEmailNotifications").is(":checked") ? 1 : 0;
 
   if (!fullName || !email || !phone) {
     showProfileFeedback("Fill in name, email, and phone before saving.", "danger");
@@ -2339,6 +2457,7 @@ $(document).on("click", "#saveProfileBtn", function () {
       full_name: fullName,
       email,
       phone,
+      email_notifications: emailNotifications,
       current_password: currentPassword,
       new_password: newPassword,
       confirm_new_password: confirmNewPassword,

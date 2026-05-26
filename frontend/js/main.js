@@ -316,3 +316,112 @@ $("#loginEmailOrPhone, #loginPassword").on("input", function () {
     $(this).removeClass("is-invalid");
   }
 });
+
+$("#forgotPasswordForm").on("submit", function (e) {
+  e.preventDefault();
+
+  const email = $("#forgotPasswordEmail").val().trim();
+  if (!email) {
+    $("#forgotPasswordEmail").addClass("is-invalid");
+    return;
+  }
+
+  const restoreButton = lockSubmitButton($(this), "Sending...");
+  $.ajax({
+    url: window.location.origin + "/forgot-password",
+    method: "POST",
+    contentType: "application/json",
+    data: JSON.stringify({ email }),
+    success(response) {
+      showToastMessage(response.message, "success");
+      $("#forgotPasswordEmail").val("");
+    },
+    error(err) {
+      showToastMessage(
+        err.responseJSON?.message || "Failed to send reset link",
+        "error",
+      );
+    },
+    complete() {
+      restoreButton();
+    },
+  });
+});
+
+$("#forgotPasswordEmail").on("input", function () {
+  if ($(this).val().trim() !== "") {
+    $(this).removeClass("is-invalid");
+  }
+});
+
+function initializeResetPasswordPage() {
+  const $form = $("#resetPasswordForm");
+  if (!$form.length) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token") || "";
+  $("#resetPasswordToken").val(token);
+
+  if (!token) {
+    $("#resetPasswordHelpText").text("This reset link is missing or invalid.");
+    $form.find("input, button").prop("disabled", true);
+    return;
+  }
+
+  $.get(window.location.origin + "/reset-password/validate?token=" + encodeURIComponent(token))
+    .fail((xhr) => {
+      $("#resetPasswordHelpText").text(
+        xhr.responseJSON?.message || "This reset link is invalid or expired.",
+      );
+      $form.find("input, button").prop("disabled", true);
+    });
+}
+
+$("#resetPasswordForm").on("submit", function (e) {
+  e.preventDefault();
+
+  const token = $("#resetPasswordToken").val().trim();
+  const newPassword = $("#resetPasswordNew").val();
+  const confirmPassword = $("#resetPasswordConfirm").val();
+
+  if (!newPassword || !confirmPassword) {
+    showToastMessage("Fill in both password fields", "warning");
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    showToastMessage("Passwords do not match", "warning");
+    return;
+  }
+
+  const restoreButton = lockSubmitButton($(this), "Resetting...");
+  $.ajax({
+    url: window.location.origin + "/reset-password",
+    method: "POST",
+    contentType: "application/json",
+    data: JSON.stringify({
+      token,
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    }),
+    success(response) {
+      showToastMessage(response.message, "success");
+      setTimeout(() => {
+        window.location.href = "login.html";
+      }, 1200);
+    },
+    error(err) {
+      showToastMessage(
+        err.responseJSON?.message || "Failed to reset password",
+        "error",
+      );
+    },
+    complete() {
+      restoreButton();
+    },
+  });
+});
+
+$(document).ready(function () {
+  initializeResetPasswordPage();
+});

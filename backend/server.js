@@ -5,7 +5,9 @@ const bodyParser = require("body-parser");
 const db = require("./db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const authMiddleware = require("./authMiddleware");
+const { buildEmailHtml, sendEmail } = require("./services/email");
 
 // multer configuration for file uploads can be added here if needed
 
@@ -114,6 +116,28 @@ async function ensureSchemaAdditions() {
       throw error;
     }
   }
+
+  try {
+    await queryAsync(
+      "ALTER TABLE users ADD COLUMN email_notifications TINYINT(1) DEFAULT 1",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  await queryAsync(
+    `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      token_hash VARCHAR(255) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )`,
+  );
 }
 
 async function ensureUserReputationFlagRow(userId) {
@@ -239,13 +263,27 @@ async function maybeNotifyReturnBadge(userId, itemTitle) {
     badge !== "none" &&
     summary.last_return_badge_notified !== badge
   ) {
-    await createNotification(
+    await createNotificationAndEmail({
       userId,
-      RETURN_BADGE_TITLE,
-      badge === "green"
-        ? `You earned the Green Badge after successfully returning multiple items. Latest item: "${itemTitle}".`
-        : `You earned the Blue Badge after your first successful item return. Item: "${itemTitle}".`,
-    );
+      title: RETURN_BADGE_TITLE,
+      message:
+        badge === "green"
+          ? `You earned the Green Badge after successfully returning multiple items. Latest item: "${itemTitle}".`
+          : `You earned the Blue Badge after your first successful item return. Item: "${itemTitle}".`,
+      emailEventType: "return_badge_earned",
+      email: {
+        subject: "LIMS - New Return Badge Earned",
+        title: "You earned a new trust badge",
+        intro:
+          badge === "green"
+            ? `You earned the Trusted Helper badge after multiple successful returns.`
+            : `You earned the Trusted Beginner badge after your first successful return.`,
+        details: [
+          { label: "Latest item", value: itemTitle },
+          { label: "Badge", value: badge === "green" ? "Trusted Helper" : "Trusted Beginner" },
+        ],
+      },
+    });
 
     await queryAsync(
       `UPDATE user_reputation_flags
@@ -260,11 +298,19 @@ async function maybeAssignWarningBadge(userId) {
   const summary = await getUserReputationSummary(userId);
 
   if (summary.warning_badge && !summary.warning_notified) {
-    await createNotification(
+    await createNotificationAndEmail({
       userId,
-      WARNING_BADGE_TITLE,
-      "Your account now has a warning badge due to multiple reports. You can submit an appeal from your profile.",
-    );
+      title: WARNING_BADGE_TITLE,
+      message:
+        "Your account now has a warning badge due to multiple reports. You can submit an appeal from your profile.",
+      emailEventType: "warning_badge_assigned",
+      email: {
+        subject: "LIMS - Warning Badge Assigned",
+        title: "A warning badge was assigned to your account",
+        intro:
+          "Your account received a warning badge because of multiple reports. You can review your profile and submit an appeal if needed.",
+      },
+    });
 
     await queryAsync(
       `UPDATE user_reputation_flags
@@ -369,6 +415,127 @@ async function createNotification(
   );
 }
 
+async function getUserEmailSettings(userId) {
+  const [userRecord] = await queryAsync(
+    `SELECT id, full_name, email, email_notifications
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [userId],
+  );
+
+  return userRecord || null;
+}
+
+async function safeSendUserEmail(userId, eventType, mailOptions, options = {}) {
+  try {
+    const userRecord = await getUserEmailSettings(userId);
+    const ignorePreference = Boolean(options.ignorePreference);
+
+    if (
+      !userRecord ||
+      !userRecord.email ||
+      (!ignorePreference && Number(userRecord.email_notifications ?? 1) !== 1)
+    ) {
+      return;
+    }
+
+    const subject = mailOptions.subject || "LIMS Update";
+    const intro =
+      mailOptions.intro || "There is an update waiting for you in LIMS.";
+    const html = buildEmailHtml({
+      title: mailOptions.title || subject,
+      greeting: `Hello ${userRecord.full_name || "there"},`,
+      intro,
+      details: mailOptions.details || [],
+      actionText: mailOptions.actionText,
+      actionUrl: mailOptions.actionUrl,
+    });
+
+    await sendEmail({
+      to: userRecord.email,
+      subject,
+      html,
+      text: `${subject}\n\n${intro}`,
+    });
+
+    console.log(
+      `[EMAIL SENT] ${userRecord.email} ${eventType} ${new Date().toISOString()}`,
+    );
+  } catch (error) {
+    console.error(
+      `[EMAIL ERROR] user_id=${userId} ${eventType}`,
+      error,
+    );
+  }
+}
+
+async function createNotificationAndEmail({
+  userId,
+  title,
+  message,
+  relatedItemId = null,
+  relatedMatchId = null,
+  emailEventType = null,
+  email = null,
+}) {
+  await createNotification(userId, title, message, relatedItemId, relatedMatchId);
+
+  if (emailEventType && email) {
+    safeSendUserEmail(userId, emailEventType, email);
+  }
+}
+
+function hashResetToken(rawToken) {
+  return crypto.createHash("sha256").update(String(rawToken)).digest("hex");
+}
+
+async function createPasswordResetToken(userId) {
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashResetToken(rawToken);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 30);
+
+  await queryAsync(
+    `UPDATE password_reset_tokens
+     SET used_at = NOW()
+     WHERE user_id = ?
+       AND used_at IS NULL`,
+    [userId],
+  );
+
+  await queryAsync(
+    `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+     VALUES (?, ?, ?)`,
+    [userId, tokenHash, expiresAt],
+  );
+
+  return rawToken;
+}
+
+async function getValidPasswordReset(userId, rawToken) {
+  const tokenHash = hashResetToken(rawToken);
+
+  const [resetRow] = await queryAsync(
+    `SELECT id, user_id, expires_at, used_at
+     FROM password_reset_tokens
+     WHERE token_hash = ?
+       AND used_at IS NULL
+       AND expires_at > NOW()
+     LIMIT 1`,
+    [tokenHash],
+  );
+
+  if (!resetRow) {
+    return null;
+  }
+
+  if (userId && Number(resetRow.user_id) !== Number(userId)) {
+    return null;
+  }
+
+  return resetRow;
+}
+
 async function createMatchIfNeeded(lostItem, foundItem, proposedBy) {
   const confidenceScore = calculateMatchConfidence(lostItem, foundItem);
 
@@ -391,13 +558,24 @@ async function createMatchIfNeeded(lostItem, foundItem, proposedBy) {
     [lostItem.id, foundItem.id, proposedBy, confidenceScore],
   );
 
-  await createNotification(
-    lostItem.user_id,
-    MATCH_NOTIFICATION_TITLE,
-    `We found a possible match for your lost item "${lostItem.title}". A reported found item titled "${foundItem.title}" looks similar.`,
-    lostItem.id,
-    insertResult.insertId,
-  );
+  await createNotificationAndEmail({
+    userId: lostItem.user_id,
+    title: MATCH_NOTIFICATION_TITLE,
+    message: `We found a possible match for your lost item "${lostItem.title}". A reported found item titled "${foundItem.title}" looks similar.`,
+    relatedItemId: lostItem.id,
+    relatedMatchId: insertResult.insertId,
+    emailEventType: "possible_match_found",
+    email: {
+      subject: "LIMS - Possible Match Found",
+      title: "A possible match was found",
+      intro:
+        `We found a found-item report that may match your lost item.`,
+      details: [
+        { label: "Your lost item", value: lostItem.title },
+        { label: "Possible found item", value: foundItem.title },
+      ],
+    },
+  });
 
   return true;
 }
@@ -1043,20 +1221,36 @@ async function markClaimCompletedIfReady(claimId) {
       `Found item completed successfully: ${context.found_title}`,
     );
     await maybeNotifyReturnBadge(context.found_owner_id, context.found_title);
-    await createNotification(
-      context.lost_owner_id,
-      CLAIM_COMPLETED_TITLE,
-      `Your claim for "${context.found_title}" is now complete. Both sides confirmed the handoff.`,
-      context.found_item_id,
-      context.match_id,
-    );
-    await createNotification(
-      context.found_owner_id,
-      CLAIM_COMPLETED_TITLE,
-      `The claim for "${context.found_title}" is complete. Your reward has been added.`,
-      context.found_item_id,
-      context.match_id,
-    );
+    await createNotificationAndEmail({
+      userId: context.lost_owner_id,
+      title: CLAIM_COMPLETED_TITLE,
+      message: `Your claim for "${context.found_title}" is now complete. Both sides confirmed the handoff.`,
+      relatedItemId: context.found_item_id,
+      relatedMatchId: context.match_id,
+      emailEventType: "claim_completed_claimant",
+      email: {
+        subject: "LIMS - Item Successfully Claimed",
+        title: "Your claim is complete",
+        intro:
+          `Both sides confirmed the handoff for your matched item.`,
+        details: [{ label: "Item", value: context.found_title }],
+      },
+    });
+    await createNotificationAndEmail({
+      userId: context.found_owner_id,
+      title: CLAIM_COMPLETED_TITLE,
+      message: `The claim for "${context.found_title}" is complete. Your reward has been added.`,
+      relatedItemId: context.found_item_id,
+      relatedMatchId: context.match_id,
+      emailEventType: "claim_completed_finder",
+      email: {
+        subject: "LIMS - Item Successfully Claimed",
+        title: "A completed claim was confirmed",
+        intro:
+          "Both sides confirmed the handoff, and your reward has been added.",
+        details: [{ label: "Item", value: context.found_title }],
+      },
+    });
     await recalculateUserStats(context.lost_owner_id);
     await recalculateUserStats(context.found_owner_id);
   }
@@ -1248,6 +1442,7 @@ app.get("/profile", authMiddleware, (req, res) => {
       users.email,
       users.phone,
       users.coins,
+      COALESCE(users.email_notifications, 1) AS email_notifications,
       users.created_at,
       COALESCE(user_stats.total_uploaded, 0) AS total_uploaded,
       COALESCE(user_stats.successful_returns, 0) AS successful_returns,
@@ -1299,6 +1494,12 @@ app.put("/profile", authMiddleware, async (req, res) => {
     const currentPassword = String(req.body.current_password || "");
     const newPassword = String(req.body.new_password || "");
     const confirmNewPassword = String(req.body.confirm_new_password || "");
+    const emailNotifications =
+      req.body.email_notifications === undefined
+        ? 1
+        : Number(req.body.email_notifications) === 1
+          ? 1
+          : 0;
 
     if (!full_name || !email || !phone) {
       return res
@@ -1360,16 +1561,23 @@ app.put("/profile", authMiddleware, async (req, res) => {
     if (nextHashedPassword) {
       await queryAsync(
         `UPDATE users
-         SET full_name = ?, email = ?, phone = ?, password = ?
+         SET full_name = ?, email = ?, phone = ?, password = ?, email_notifications = ?
          WHERE id = ?`,
-        [full_name, email, phone, nextHashedPassword, req.user.userId],
+        [
+          full_name,
+          email,
+          phone,
+          nextHashedPassword,
+          emailNotifications,
+          req.user.userId,
+        ],
       );
     } else {
       await queryAsync(
         `UPDATE users
-         SET full_name = ?, email = ?, phone = ?
+         SET full_name = ?, email = ?, phone = ?, email_notifications = ?
          WHERE id = ?`,
-        [full_name, email, phone, req.user.userId],
+        [full_name, email, phone, emailNotifications, req.user.userId],
       );
     }
 
@@ -1868,6 +2076,120 @@ app.post("/login", (req, res) => {
   });
 });
 
+app.post("/forgot-password", async (req, res) => {
+  try {
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const [userRecord] = await queryAsync(
+      "SELECT id, email, full_name FROM users WHERE email = ? LIMIT 1",
+      [email],
+    );
+
+    if (userRecord) {
+      const rawToken = await createPasswordResetToken(userRecord.id);
+      const resetUrl = `${req.protocol}://${req.get("host")}/reset-password.html?token=${encodeURIComponent(rawToken)}`;
+
+      safeSendUserEmail(userRecord.id, "forgot_password", {
+        subject: "LIMS - Reset Your Password",
+        title: "Reset your password",
+        intro:
+          "We received a request to reset your password. Use the button below to choose a new one. This link expires in 30 minutes and can be used only once.",
+        actionText: "Reset Password",
+        actionUrl: resetUrl,
+      }, { ignorePreference: true });
+    }
+
+    res.json({
+      message:
+        "If that email exists in our system, a password reset link has been sent.",
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ message: "Failed to process forgot password request" });
+  }
+});
+
+app.get("/reset-password/validate", async (req, res) => {
+  try {
+    const token = String(req.query.token || "").trim();
+
+    if (!token) {
+      return res.status(400).json({ message: "Reset token is required" });
+    }
+
+    const resetRow = await getValidPasswordReset(null, token);
+
+    if (!resetRow) {
+      return res.status(400).json({ message: "This reset link is invalid or expired" });
+    }
+
+    res.json({ message: "Reset link is valid" });
+  } catch (error) {
+    console.error("Reset password validation error:", error);
+    res.status(500).json({ message: "Failed to validate reset token" });
+  }
+});
+
+app.post("/reset-password", async (req, res) => {
+  try {
+    const token = String(req.body.token || "").trim();
+    const newPassword = String(req.body.new_password || "");
+    const confirmPassword = String(req.body.confirm_password || "");
+
+    if (!token || !newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "All reset fields are required" });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: "Password must be at least 6 characters long",
+      });
+    }
+
+    const resetRow = await getValidPasswordReset(null, token);
+
+    if (!resetRow) {
+      return res.status(400).json({ message: "This reset link is invalid or expired" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await queryAsync("START TRANSACTION");
+    try {
+      await queryAsync("UPDATE users SET password = ? WHERE id = ?", [
+        hashedPassword,
+        resetRow.user_id,
+      ]);
+      await queryAsync(
+        `UPDATE password_reset_tokens
+         SET used_at = NOW()
+         WHERE user_id = ?
+           AND used_at IS NULL`,
+        [resetRow.user_id],
+      );
+      await queryAsync("COMMIT");
+    } catch (transactionError) {
+      await queryAsync("ROLLBACK");
+      throw transactionError;
+    }
+
+    res.json({ message: "Password reset successfully" });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ message: "Failed to reset password" });
+  }
+});
+
 // upload page
 // To be implemented: file upload handling using multer or similar middleware
 
@@ -2175,13 +2497,24 @@ app.post("/matches/:id/request-contact", authMiddleware, async (req, res) => {
     await createOrUpdateClaim(match.found_item_id, req.user.userId, "pending");
     await recalculateUserStats(req.user.userId);
 
-    await createNotification(
-      match.found_owner_id,
-      CONTACT_REQUEST_TITLE,
-      `${match.lost_owner_name} believes your found item "${match.found_title}" may be their lost item "${match.lost_title}" and is requesting your contact details.`,
-      match.found_item_id,
-      match.id,
-    );
+    await createNotificationAndEmail({
+      userId: match.found_owner_id,
+      title: CONTACT_REQUEST_TITLE,
+      message: `${match.lost_owner_name} believes your found item "${match.found_title}" may be their lost item "${match.lost_title}" and is requesting your contact details.`,
+      relatedItemId: match.found_item_id,
+      relatedMatchId: match.id,
+      emailEventType: "contact_request_received",
+      email: {
+        subject: "LIMS - Contact Request Received",
+        title: "Someone requested your contact information",
+        intro:
+          `${match.lost_owner_name} believes your found item may belong to them and wants to continue the handoff process.`,
+        details: [
+          { label: "Found item", value: match.found_title },
+          { label: "Claimed lost item", value: match.lost_title },
+        ],
+      },
+    });
 
     res.json({ message: "Contact request sent successfully" });
   } catch (error) {
@@ -2359,13 +2692,24 @@ app.post("/items/:id/suggest-match", authMiddleware, async (req, res) => {
       [req.user.userId],
     );
 
-    await createNotification(
-      foundItem.user_id,
-      CONTACT_REQUEST_TITLE,
-      `${requester.full_name} believes your found item "${foundItem.title}" may be their lost item "${lostItem.title}" and is requesting your contact details.`,
-      foundItem.id,
-      matchId,
-    );
+    await createNotificationAndEmail({
+      userId: foundItem.user_id,
+      title: CONTACT_REQUEST_TITLE,
+      message: `${requester.full_name} believes your found item "${foundItem.title}" may be their lost item "${lostItem.title}" and is requesting your contact details.`,
+      relatedItemId: foundItem.id,
+      relatedMatchId: matchId,
+      emailEventType: "contact_request_received",
+      email: {
+        subject: "LIMS - Contact Request Received",
+        title: "Someone requested your contact information",
+        intro:
+          `${requester.full_name} believes your found item may belong to them and wants to continue the handoff process.`,
+        details: [
+          { label: "Found item", value: foundItem.title },
+          { label: "Claimed lost item", value: lostItem.title },
+        ],
+      },
+    });
     await createOrUpdateClaim(foundItem.id, req.user.userId, "pending");
     await recalculateUserStats(req.user.userId);
 
@@ -2670,13 +3014,24 @@ app.post(
           sharedParts.push(`Email: ${notification.found_owner_email}`);
         }
 
-        await createNotification(
-          notification.lost_owner_id,
-          CONTACT_SHARED_TITLE,
-          `${notification.found_owner_name} shared contact details for the possible match "${notification.found_title}". ${sharedParts.join(" | ")} Please confirm after you both complete the offline handoff.`,
-          notification.found_item_id,
-          notification.related_match_id,
-        );
+        await createNotificationAndEmail({
+          userId: notification.lost_owner_id,
+          title: CONTACT_SHARED_TITLE,
+          message: `${notification.found_owner_name} shared contact details for the possible match "${notification.found_title}". ${sharedParts.join(" | ")} Please confirm after you both complete the offline handoff.`,
+          relatedItemId: notification.found_item_id,
+          relatedMatchId: notification.related_match_id,
+          emailEventType: "contact_shared",
+          email: {
+            subject: "LIMS - Contact Information Shared",
+            title: "Contact details were shared",
+            intro:
+              `${notification.found_owner_name} shared contact information for your matched item. You can now coordinate the handoff offline.`,
+            details: [
+              { label: "Item", value: notification.found_title },
+              { label: "Shared details", value: sharedParts.join(" | ") },
+            ],
+          },
+        });
       } else {
         await queryAsync(
           "UPDATE matches SET match_status = 'rejected' WHERE id = ?",
@@ -2861,13 +3216,24 @@ app.post("/claims/:id/share-contact", authMiddleware, async (req, res) => {
       [req.params.id],
     );
 
-    await createNotification(
-      claim.lost_owner_id,
-      CONTACT_SHARED_TITLE,
-      `${finder.full_name} shared contact details for the possible match "${claim.found_title}". ${sharedParts.join(" | ")} Please confirm after the handoff is completed.`,
-      claim.found_item_id,
-      claim.match_id,
-    );
+    await createNotificationAndEmail({
+      userId: claim.lost_owner_id,
+      title: CONTACT_SHARED_TITLE,
+      message: `${finder.full_name} shared contact details for the possible match "${claim.found_title}". ${sharedParts.join(" | ")} Please confirm after the handoff is completed.`,
+      relatedItemId: claim.found_item_id,
+      relatedMatchId: claim.match_id,
+      emailEventType: "contact_shared",
+      email: {
+        subject: "LIMS - Contact Information Shared",
+        title: "Contact details were shared",
+        intro:
+          `${finder.full_name} shared contact information for your matched item. You can now coordinate the handoff offline.`,
+        details: [
+          { label: "Item", value: claim.found_title },
+          { label: "Shared details", value: sharedParts.join(" | ") },
+        ],
+      },
+    });
 
     await recalculateUserStats(claim.lost_owner_id);
     await recalculateUserStats(claim.found_owner_id);
@@ -3419,12 +3785,23 @@ app.post("/admin/items/verify", authMiddleware, async (req, res) => {
     );
 
     if (action === "rejected") {
-      await createNotification(
-        itemRow.user_id,
-        ITEM_REJECTED_TITLE,
-        `Your item "${itemRow.title}" was rejected. Reason: ${String(rejection_reason).trim()}`,
-        item_id,
-      );
+      await createNotificationAndEmail({
+        userId: itemRow.user_id,
+        title: ITEM_REJECTED_TITLE,
+        message: `Your item "${itemRow.title}" was rejected. Reason: ${String(rejection_reason).trim()}`,
+        relatedItemId: item_id,
+        emailEventType: "item_rejected",
+        email: {
+          subject: "LIMS - Item Rejected",
+          title: "An item report was rejected",
+          intro:
+            "An admin reviewed your item report and rejected it.",
+          details: [
+            { label: "Item", value: itemRow.title },
+            { label: "Reason", value: String(rejection_reason).trim() },
+          ],
+        },
+      });
     }
 
     res.json({ message: `Item ${action} successfully` });
@@ -3990,6 +4367,138 @@ app.post("/badges/appeal", authMiddleware, async (req, res) => {
   }
 });
 
+app.get("/admin/badge-appeals", authMiddleware, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+
+  try {
+    const appeals = await queryAsync(
+      `SELECT
+         badge_appeals.id,
+         badge_appeals.badge_type,
+         badge_appeals.reason,
+         badge_appeals.status,
+         badge_appeals.admin_note,
+         badge_appeals.created_at,
+         badge_appeals.reviewed_at,
+         users.id AS user_id,
+         users.full_name,
+         users.email
+       FROM badge_appeals
+       JOIN users ON badge_appeals.user_id = users.id
+       ORDER BY
+         FIELD(badge_appeals.status, 'pending', 'approved', 'rejected'),
+         badge_appeals.created_at DESC`,
+    );
+
+    res.json(appeals);
+  } catch (error) {
+    console.error("Failed to fetch badge appeals:", error);
+    res.status(500).json({ message: "Failed to fetch badge appeals" });
+  }
+});
+
+app.post("/admin/badge-appeals/:id/review", authMiddleware, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+
+  try {
+    const action = String(req.body.action || "").trim().toLowerCase();
+    const adminNote = String(req.body.admin_note || "").trim();
+
+    if (!["approve", "reject"].includes(action)) {
+      return res.status(400).json({ message: "Invalid action" });
+    }
+
+    const [appeal] = await queryAsync(
+      `SELECT id, user_id, status
+       FROM badge_appeals
+       WHERE id = ?
+       LIMIT 1`,
+      [req.params.id],
+    );
+
+    if (!appeal) {
+      return res.status(404).json({ message: "Appeal not found" });
+    }
+
+    if (appeal.status !== "pending") {
+      return res.status(409).json({ message: "This appeal has already been reviewed" });
+    }
+
+    await queryAsync(
+      `UPDATE badge_appeals
+       SET status = ?,
+           reviewed_by = ?,
+           admin_note = ?,
+           reviewed_at = NOW()
+       WHERE id = ?`,
+      [action === "approve" ? "approved" : "rejected", req.user.userId, adminNote || null, req.params.id],
+    );
+
+    if (action === "approve") {
+      await ensureUserReputationFlagRow(appeal.user_id);
+      await queryAsync(
+        `UPDATE user_reputation_flags
+         SET warning_cleared = 1,
+             warning_notified = 0,
+             warning_cleared_by = ?
+         WHERE user_id = ?`,
+        [req.user.userId, appeal.user_id],
+      );
+
+      await createNotificationAndEmail({
+        userId: appeal.user_id,
+        title: "Appeal Approved",
+        message: "Your warning badge appeal was approved by the admin team.",
+        emailEventType: "appeal_approved",
+        email: {
+          subject: "LIMS - Appeal Approved",
+          title: "Your badge appeal was approved",
+          intro:
+            "The admin team approved your appeal and updated your account status.",
+          details: adminNote ? [{ label: "Admin note", value: adminNote }] : [],
+        },
+      });
+    } else {
+      await createNotificationAndEmail({
+        userId: appeal.user_id,
+        title: "Appeal Rejected",
+        message: "Your warning badge appeal was rejected by the admin team.",
+        emailEventType: "appeal_rejected",
+        email: {
+          subject: "LIMS - Appeal Rejected",
+          title: "Your badge appeal was rejected",
+          intro:
+            "The admin team reviewed your appeal and decided to keep the warning badge in place.",
+          details: adminNote ? [{ label: "Admin note", value: adminNote }] : [],
+        },
+      });
+    }
+
+    await queryAsync(
+      `INSERT INTO admin_actions (admin_id, action_type, target_id, target_type, details)
+       VALUES (?, ?, ?, 'user', ?)`,
+      [
+        req.user.userId,
+        action === "approve" ? "approve_appeal" : "reject_appeal",
+        appeal.user_id,
+        adminNote || "Badge appeal reviewed",
+      ],
+    );
+
+    res.json({
+      message:
+        action === "approve" ? "Appeal approved successfully" : "Appeal rejected successfully",
+    });
+  } catch (error) {
+    console.error("Failed to review badge appeal:", error);
+    res.status(500).json({ message: "Failed to review badge appeal" });
+  }
+});
+
 app.post(
   "/admin/payment-requests/:id/review",
   authMiddleware,
@@ -4039,11 +4548,22 @@ app.post(
           [req.user.userId, coinAmount, req.params.id],
         );
 
-        await createNotification(
-          requestRow.user_id,
-          "Recharge Approved",
-          `Your recharge request was approved. ${coinAmount} coins were added. New balance: ${nextBalance} coins.`,
-        );
+        await createNotificationAndEmail({
+          userId: requestRow.user_id,
+          title: "Recharge Approved",
+          message: `Your recharge request was approved. ${coinAmount} coins were added. New balance: ${nextBalance} coins.`,
+          emailEventType: "recharge_approved",
+          email: {
+            subject: "LIMS - Recharge Approved",
+            title: "Your recharge request was approved",
+            intro:
+              "Your wallet was updated successfully after admin review.",
+            details: [
+              { label: "Coins added", value: String(coinAmount) },
+              { label: "New balance", value: `${nextBalance} coins` },
+            ],
+          },
+        });
       } else {
         await queryAsync(
           `UPDATE payment_requests
