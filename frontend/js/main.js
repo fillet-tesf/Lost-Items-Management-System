@@ -23,7 +23,68 @@ function lockSubmitButton($form, label) {
   };
 }
 
+function persistUserCoins(nextCoins) {
+  if (!Number.isFinite(Number(nextCoins))) return;
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  if (!Object.keys(user).length) return;
+  user.coins = Number(nextCoins);
+  localStorage.setItem("user", JSON.stringify(user));
+}
+
+function loadSelectOptions(endpoint, selector, placeholder) {
+  const $select = $(selector);
+  if (!$select.length) return;
+
+  $.get(window.location.origin + endpoint)
+    .done((rows) => {
+      const options = (rows || [])
+        .map(
+          (row) =>
+            `<option value="${row.id}">${window.LIMS_UI && window.LIMS_UI.escapeHtml ? window.LIMS_UI.escapeHtml(row.name) : row.name}</option>`,
+        )
+        .join("");
+      $select.html(
+        `<option value="">${placeholder}</option>${options}`,
+      );
+    })
+    .fail(() => {
+      showToastMessage(`Failed to load ${placeholder.toLowerCase()} list`, "error");
+    });
+}
+
+function applyUploadAuthGate() {
+  const $form = $("#uploadForm");
+  if (!$form.length) return;
+
+  const token = localStorage.getItem("token");
+  const interactiveSelector = "input, select, textarea, button";
+
+  if (token) {
+    $form.find(interactiveSelector).prop("disabled", false);
+    $("#uploadAuthNotice").remove();
+    return;
+  }
+
+  $form.find(interactiveSelector).prop("disabled", true);
+  if ($("#uploadAuthNotice").length === 0) {
+    $form.before(`
+      <div id="uploadAuthNotice" class="alert alert-warning d-flex align-items-start gap-2 mb-4">
+        <i class="bi bi-lock-fill mt-1"></i>
+        <div>
+          <strong>Login required.</strong> You need to <a href="login.html" class="alert-link">sign in</a> before reporting a lost or found item.
+        </div>
+      </div>
+    `);
+  }
+}
+
 $(document).ready(function () {
+  if ($("#uploadForm").length) {
+    loadSelectOptions("/categories", "#category", "Select category");
+    loadSelectOptions("/locations", "#location", "Select location");
+    applyUploadAuthGate();
+  }
+
   // -------- SUBMIT VALIDATION FOR UPLOAD PAGE--------
   $("#uploadForm").on("submit", function (e) {
     e.preventDefault();
@@ -53,7 +114,6 @@ $(document).ready(function () {
 
     if (!token) {
       showToastMessage("Please login first", "warning");
-      window.location.href = "login.html";
       return;
     }
 
@@ -96,7 +156,10 @@ $(document).ready(function () {
       //cache: false,
       data: formData,
 
-      success: function () {
+      success: function (response) {
+        if (typeof response?.current_balance !== "undefined") {
+          persistUserCoins(response.current_balance);
+        }
         window.location.href = "success.html";
       },
 

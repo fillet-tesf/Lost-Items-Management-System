@@ -120,7 +120,10 @@
                 method: "GET",
                 headers: headers(),
                 success(data) {
-                    $("#walletBalance").text((data.balance || 0) + " coins");
+                    const balance = Number(data.balance || 0);
+                    $("#walletBalance").text(balance + " coins");
+                    const nextUser = { ...currentUser, coins: balance };
+                    localStorage.setItem("user", JSON.stringify(nextUser));
 
                     const transactions = (data.transactions || []).length
                         ? data.transactions.map(transaction => `

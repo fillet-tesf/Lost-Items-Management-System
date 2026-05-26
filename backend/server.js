@@ -1123,10 +1123,45 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/index.html"));
 });
 
+app.get("/categories", async (req, res) => {
+  try {
+    const categories = await queryAsync(
+      "SELECT id, name FROM categories ORDER BY name ASC",
+    );
+    res.json(categories);
+  } catch (error) {
+    console.error("Failed to fetch categories:", error);
+    res.status(500).json({ message: "Failed to fetch categories" });
+  }
+});
+
+app.get("/locations", async (req, res) => {
+  try {
+    const locations = await queryAsync(
+      "SELECT id, name FROM locations ORDER BY name ASC",
+    );
+    res.json(locations);
+  } catch (error) {
+    console.error("Failed to fetch locations:", error);
+    res.status(500).json({ message: "Failed to fetch locations" });
+  }
+});
+
 app.get("/home-items", (req, res) => {
   const sql = `
-    SELECT items.*
+    SELECT
+      items.id,
+      items.user_id,
+      items.item_type,
+      items.title,
+      items.description,
+      items.image_url,
+      items.created_at,
+      categories.name AS category,
+      locations.name AS location
     FROM items
+    JOIN categories ON items.category_id = categories.id
+    JOIN locations ON items.location_id = locations.id
     JOIN item_statuses ON items.item_status_id = item_statuses.id
     WHERE item_statuses.status_name NOT IN ('deleted', 'rejected', 'claimed', 'returned')
     ORDER BY RAND()
@@ -1261,6 +1296,9 @@ app.put("/profile", authMiddleware, async (req, res) => {
       .trim()
       .toLowerCase();
     const phone = String(req.body.phone || "").trim();
+    const currentPassword = String(req.body.current_password || "");
+    const newPassword = String(req.body.new_password || "");
+    const confirmNewPassword = String(req.body.confirm_new_password || "");
 
     if (!full_name || !email || !phone) {
       return res
@@ -1276,12 +1314,64 @@ app.put("/profile", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Enter a valid phone number" });
     }
 
-    await queryAsync(
-      `UPDATE users
-       SET full_name = ?, email = ?, phone = ?
-       WHERE id = ?`,
-      [full_name, email, phone, req.user.userId],
-    );
+    const changePasswordRequested =
+      currentPassword || newPassword || confirmNewPassword;
+
+    let nextHashedPassword = null;
+    if (changePasswordRequested) {
+      if (!currentPassword || !newPassword || !confirmNewPassword) {
+        return res.status(400).json({
+          message:
+            "Current password, new password, and confirm password are required to change password",
+        });
+      }
+
+      if (newPassword !== confirmNewPassword) {
+        return res.status(400).json({ message: "New passwords do not match" });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          message: "New password must be at least 6 characters long",
+        });
+      }
+
+      const [currentUser] = await queryAsync(
+        "SELECT password FROM users WHERE id = ? LIMIT 1",
+        [req.user.userId],
+      );
+
+      if (!currentUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const passwordMatches = await bcrypt.compare(
+        currentPassword,
+        currentUser.password,
+      );
+
+      if (!passwordMatches) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      nextHashedPassword = await bcrypt.hash(newPassword, 10);
+    }
+
+    if (nextHashedPassword) {
+      await queryAsync(
+        `UPDATE users
+         SET full_name = ?, email = ?, phone = ?, password = ?
+         WHERE id = ?`,
+        [full_name, email, phone, nextHashedPassword, req.user.userId],
+      );
+    } else {
+      await queryAsync(
+        `UPDATE users
+         SET full_name = ?, email = ?, phone = ?
+         WHERE id = ?`,
+        [full_name, email, phone, req.user.userId],
+      );
+    }
 
     res.json({ message: "Profile updated successfully" });
   } catch (error) {
@@ -1803,10 +1893,16 @@ app.post("/items", authMiddleware, upload.single("image"), async (req, res) => {
 
   const imageUrl = req.file ? `/uploads/items/${req.file.filename}` : null;
   let debitedForLostItem = false;
+  let currentBalance = null;
 
   try {
     if (item_type === "lost") {
-      await adjustUserCoins(user_id, 10, "debit", `Posted lost item: ${title}`);
+      currentBalance = await adjustUserCoins(
+        user_id,
+        10,
+        "debit",
+        `Posted lost item: ${title}`,
+      );
       debitedForLostItem = true;
     }
 
@@ -1839,12 +1935,19 @@ app.post("/items", authMiddleware, upload.single("image"), async (req, res) => {
     }
 
     await recalculateUserStats(user_id);
+    if (currentBalance === null) {
+      const [walletRow] = await queryAsync("SELECT coins FROM users WHERE id = ?", [
+        user_id,
+      ]);
+      currentBalance = walletRow?.coins ?? null;
+    }
 
     console.log("Item uploaded with ID:", result.insertId);
     res.status(201).json({
       message: "Item uploaded successfully",
       item_id: result.insertId,
       matches_found: matchesFound,
+      current_balance: currentBalance,
     });
   } catch (error) {
     if (error.code === "INSUFFICIENT_COINS") {
@@ -3919,7 +4022,7 @@ app.post(
       if (action === "approve") {
         const coinAmount = Number(approved_coins || requestRow.requested_coins);
 
-        await adjustUserCoins(
+        const nextBalance = await adjustUserCoins(
           requestRow.user_id,
           coinAmount,
           "credit",
@@ -3934,6 +4037,12 @@ app.post(
              reviewed_at = NOW()
          WHERE id = ?`,
           [req.user.userId, coinAmount, req.params.id],
+        );
+
+        await createNotification(
+          requestRow.user_id,
+          "Recharge Approved",
+          `Your recharge request was approved. ${coinAmount} coins were added. New balance: ${nextBalance} coins.`,
         );
       } else {
         await queryAsync(

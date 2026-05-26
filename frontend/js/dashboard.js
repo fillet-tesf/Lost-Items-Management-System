@@ -113,6 +113,54 @@ function renderUserInline(user) {
   return `<strong>${escapeHtml(user?.full_name || "Unknown user")}</strong>`;
 }
 
+function setNotificationsMenuBadge(unreadCount) {
+  const count = Number(unreadCount || 0);
+  const $link = $('.sidebar .nav-link[data-page="notifications"]');
+  if (!$link.length) return;
+  $link.find(".notif-count-badge").remove();
+  if (count > 0) {
+    $link.append(
+      ` <span class="badge bg-danger rounded-pill notif-count-badge">${count}</span>`,
+    );
+  }
+}
+
+function syncUserCoins() {
+  if (!token || !user || user.role === "admin") return;
+  $.ajax({
+    url: window.location.origin + "/wallet",
+    method: "GET",
+    headers: authHeaders(),
+    success(data) {
+      const nextCoins = Number(data?.balance);
+      if (!Number.isFinite(nextCoins)) return;
+      user.coins = nextCoins;
+      localStorage.setItem("user", JSON.stringify(user));
+      $('a[href="wallet.html"]').each(function () {
+        if ($(this).hasClass("btn")) {
+          $(this).text(`${nextCoins} coins`);
+        }
+      });
+      if ($("#profileCoins").length) {
+        $("#profileCoins").text(`${nextCoins} coins`);
+      }
+    },
+  });
+}
+
+function refreshUnreadNotificationBadge() {
+  if (!token || !user || user.role !== "user") return;
+  $.ajax({
+    url: window.location.origin + "/notifications",
+    method: "GET",
+    headers: authHeaders(),
+    success(notifications) {
+      const unread = (notifications || []).filter((entry) => !entry.is_read).length;
+      setNotificationsMenuBadge(unread);
+    },
+  });
+}
+
 function renderStarRating(value, count = 0) {
   if (window.LIMS_UI && window.LIMS_UI.renderStarRating) {
     return window.LIMS_UI.renderStarRating(value, count);
@@ -465,6 +513,7 @@ function renderUserOverview() {
         </div>
       `);
       activateTooltips();
+      setNotificationsMenuBadge(stats.unread_notifications || 0);
     },
     error() {
       $("#dashboardContent").html(
@@ -955,7 +1004,7 @@ function loadNotifications() {
                              ${renderUserInline({
                                full_name: notification.claimant_name,
                                average_rating: notification.claimant_rating,
-                               rating_count: notification.claimant_rating ? 1 : 0,
+                               rating_count: notification.claimant_rating_count || 0,
                                badges: notification.claimant_badges || [],
                              })}
                              <div class="text-muted mt-1">Claims: ${Number(notification.total_claims || 0)} total (${Number(notification.successful_claims || 0)} successful, ${Number(notification.rejected_claims || 0)} rejected)</div>
@@ -985,6 +1034,8 @@ function loadNotifications() {
 
       $("#notificationsList").html(cards);
       activateTooltips();
+      const unread = notifications.filter((entry) => !entry.is_read).length;
+      setNotificationsMenuBadge(unread);
     },
     error() {
       $("#notificationsList").html(
@@ -1014,6 +1065,9 @@ function loadProfile() {
       $("#editProfileName").val(profile.name);
       $("#editProfileEmail").val(profile.email);
       $("#editProfilePhone").val(profile.phone);
+      $("#editCurrentPassword").val("");
+      $("#editNewPassword").val("");
+      $("#editConfirmNewPassword").val("");
       if ($("#welcomeName").length) {
         $("#welcomeName").text(profile.name);
       }
@@ -1469,6 +1523,19 @@ function renderProfileView() {
             <div class="mb-0">
               <label class="form-label">Phone</label>
               <input id="editProfilePhone" class="form-control">
+            </div>
+            <hr>
+            <div class="mb-3">
+              <label class="form-label">Current Password</label>
+              <input id="editCurrentPassword" type="password" class="form-control" placeholder="Required only if changing password">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">New Password</label>
+              <input id="editNewPassword" type="password" class="form-control" placeholder="Leave blank to keep current password">
+            </div>
+            <div class="mb-0">
+              <label class="form-label">Confirm New Password</label>
+              <input id="editConfirmNewPassword" type="password" class="form-control">
             </div>
           </div>
           <div class="modal-footer">
@@ -1997,6 +2064,7 @@ $(document).on("click", ".shareClaimContact", function () {
       loadIncomingClaims();
       loadNotifications();
       loadMatches();
+      syncUserCoins();
     },
     error(xhr) {
       notify(
@@ -2022,6 +2090,7 @@ $(document).on("click", ".confirmDelivered", function () {
       notify(res.message, "success");
       loadIncomingClaims();
       loadNotifications();
+      syncUserCoins();
     },
     error(xhr) {
       notify(xhr.responseJSON?.message || "Failed to confirm delivery", "error");
@@ -2044,6 +2113,7 @@ $(document).on("click", ".confirmReceived", function () {
       notify(res.message, "success");
       loadMatches();
       loadNotifications();
+      syncUserCoins();
     },
     error(xhr) {
       notify(xhr.responseJSON?.message || "Failed to confirm receipt", "error");
@@ -2236,10 +2306,27 @@ $(document).on("click", "#saveProfileBtn", function () {
   const fullName = $("#editProfileName").val().trim();
   const email = $("#editProfileEmail").val().trim();
   const phone = $("#editProfilePhone").val().trim();
+  const currentPassword = $("#editCurrentPassword").val();
+  const newPassword = $("#editNewPassword").val();
+  const confirmNewPassword = $("#editConfirmNewPassword").val();
 
   if (!fullName || !email || !phone) {
     showProfileFeedback("Fill in name, email, and phone before saving.", "danger");
     return;
+  }
+
+  if (newPassword || confirmNewPassword || currentPassword) {
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      showProfileFeedback(
+        "To change password, provide current password, new password, and confirmation.",
+        "danger",
+      );
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      showProfileFeedback("New passwords do not match.", "danger");
+      return;
+    }
   }
 
   const restoreButton = setActionLoading($(this), "Saving...");
@@ -2252,6 +2339,9 @@ $(document).on("click", "#saveProfileBtn", function () {
       full_name: fullName,
       email,
       phone,
+      current_password: currentPassword,
+      new_password: newPassword,
+      confirm_new_password: confirmNewPassword,
     }),
     success(res) {
       const updatedUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -2265,6 +2355,7 @@ $(document).on("click", "#saveProfileBtn", function () {
       modal.hide();
       showProfileFeedback(res.message, "success");
       loadProfile();
+      syncUserCoins();
     },
     error(xhr) {
       showProfileFeedback(
@@ -2328,6 +2419,9 @@ $(document).ready(function () {
   if ($("#welcomeName").length) {
     $("#welcomeName").text(user.full_name);
   }
+
+  syncUserCoins();
+  refreshUnreadNotificationBadge();
 
   $(".sidebar .nav-link").on("click", function (e) {
     const page = $(this).data("page");

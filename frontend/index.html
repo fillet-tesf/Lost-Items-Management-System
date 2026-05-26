@@ -21,6 +21,47 @@
 <script>
     $(function () {
         const token = localStorage.getItem("token");
+        const escapeHtml = (value) => String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+
+        function syncCurrentUserCoins() {
+            const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+            if (!token || !currentUser.id || currentUser.role === "admin") return;
+
+            $.ajax({
+                url: window.location.origin + "/wallet",
+                method: "GET",
+                headers: { Authorization: "Bearer " + token },
+                success(data) {
+                    const nextCoins = Number(data?.balance ?? currentUser.coins ?? 0);
+                    const nextUser = { ...currentUser, coins: nextCoins };
+                    localStorage.setItem("user", JSON.stringify(nextUser));
+                    $("#coinsNavLink").text(`Coins: ${nextCoins}`);
+                }
+            });
+        }
+
+        function loadSearchFilters() {
+            $.get(window.location.origin + "/categories", function (categories) {
+                const options = (categories || []).map((category) =>
+                    `<option value="${category.id}">${escapeHtml(category.name)}</option>`
+                ).join("");
+                $("#categorySelect").html(`<option selected value="">Category</option>${options}`);
+            });
+
+            $.get(window.location.origin + "/locations", function (locations) {
+                const options = (locations || []).map((location) =>
+                    `<option value="${location.id}">${escapeHtml(location.name)}</option>`
+                ).join("");
+                $("#locationSelect").html(`<option selected value="">Location</option>${options}`);
+            });
+        }
+
+        loadSearchFilters();
 
         if (token) {
             const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -34,7 +75,7 @@
 
             if (currentUser.role !== "admin") {
                 authLinks += `<li class="nav-item">
-        <a class="nav-link" href="wallet.html">Coins: ${currentUser.coins || 0}</a>
+        <a class="nav-link" id="coinsNavLink" href="wallet.html">Coins: ${currentUser.coins || 0}</a>
       </li>`;
             }
 
@@ -46,6 +87,7 @@
 
             $("#navMenu a[href='login.html']").parent().remove();
             $("#navMenu a[href='signup.html']").parent().remove();
+            syncCurrentUserCoins();
         }
 
         $(document).on("click", "#logoutBtn", function () {
