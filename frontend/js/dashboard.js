@@ -90,6 +90,12 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString();
 }
 
+function formatPaymentMethod(method) {
+  if (method === "bank_transfer") return "Bank Transfer";
+  if (method === "telebirr") return "Telebirr";
+  return method || "Unknown";
+}
+
 function getStatusBadge(status) {
   const badgeClass = STATUS_BADGES[status] || "secondary";
   const label = STATUS_LABELS[status] || status;
@@ -1356,7 +1362,7 @@ function loadPaymentRequests() {
                 <tr>
                   <td><a class="custom-link" href="${getAdminUserUrl(request.user_id)}"><i class="bi bi-person"></i>${escapeHtml(request.user_name)}</a></td>
                   <td>${escapeHtml(request.requested_coins)}</td>
-                  <td>${escapeHtml(request.payment_method)}</td>
+                  <td>${escapeHtml(formatPaymentMethod(request.payment_method))}</td>
                   <td>${escapeHtml(request.payment_reference)}</td>
                   <td>${formatDate(request.created_at)}</td>
                   <td>${getStatusBadge(request.status)}</td>

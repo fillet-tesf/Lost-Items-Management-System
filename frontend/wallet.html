@@ -39,18 +39,31 @@
                         </div>
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <input id="rechargeCoins" class="form-control" type="number" min="1" placeholder="Coins">
+                                <input id="rechargeCoins" class="form-control" type="number" min="10" placeholder="Coins">
+                                <div id="coinValidationMessage" class="small text-danger mt-2 d-none"></div>
                             </div>
                             <div class="col-md-4">
-                                <select id="paymentMethod" class="form-select">
+                                <select id="paymentMethod" class="form-select" disabled>
                                     <option value="">Payment Method</option>
                                     <option value="bank_transfer">Bank Transfer</option>
-                                    <option value="mobile_money">Mobile Money</option>
-                                    <option value="cash_deposit">Cash Deposit</option>
+                                    <option value="telebirr">Telebirr</option>
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <input id="paymentReference" class="form-control" placeholder="Payment Reference">
+                                <div class="border rounded-3 px-3 py-2 bg-light h-100 d-flex flex-column justify-content-center">
+                                    <div class="metric-label mb-1">Pricing</div>
+                                    <div class="fw-semibold" id="coinPricingSummary">1 Coin = 5 Birr</div>
+                                    <div class="small text-muted" id="coinPricingTotal">Enter at least 10 coins to continue.</div>
+                                </div>
+                            </div>
+                            <div class="col-12" id="paymentInstructionsWrapper"></div>
+                            <div class="col-md-6">
+                                <input id="paymentReferencePrimary" class="form-control" placeholder="Payment reference" disabled>
+                                <div class="small text-muted mt-2" id="paymentReferencePrimaryHint">Enter a valid coin amount to continue.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <input id="paymentReferenceSecondary" class="form-control" placeholder="Additional payment detail" disabled>
+                                <div class="small text-muted mt-2" id="paymentReferenceSecondaryHint">This field changes based on your payment method.</div>
                             </div>
                             <div class="col-12">
                                 <button class="btn btn-primary" id="submitRecharge">Submit Recharge Request</button>
@@ -111,6 +124,179 @@
             };
         }
 
+        const COIN_PRICE_BIRR = 5;
+        const MIN_RECHARGE_COINS = 10;
+
+        function escapeHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function getRechargeCoins() {
+            return Number($("#rechargeCoins").val() || 0);
+        }
+
+        function isValidRechargeCoins(coins) {
+            return Number.isInteger(coins) && coins >= MIN_RECHARGE_COINS;
+        }
+
+        function getSelectedMethod() {
+            return $("#paymentMethod").val();
+        }
+
+        function formatPaymentMethod(method) {
+            if (method === "bank_transfer") return "Bank Transfer";
+            if (method === "telebirr") return "Telebirr";
+            return method || "Unknown";
+        }
+
+        function updatePricingSummary() {
+            const coins = getRechargeCoins();
+            const isValid = isValidRechargeCoins(coins);
+            const totalBirr = coins * COIN_PRICE_BIRR;
+
+            $("#coinPricingSummary").text("1 Coin = 5 Birr");
+
+            if (!coins) {
+                $("#coinPricingTotal").text("Enter at least 10 coins to continue.");
+            } else if (!isValid) {
+                $("#coinPricingTotal").text(`Minimum purchase is ${MIN_RECHARGE_COINS} coins (${MIN_RECHARGE_COINS * COIN_PRICE_BIRR} Birr).`);
+            } else {
+                $("#coinPricingTotal").text(`${coins} Coins = ${totalBirr} Birr`);
+            }
+        }
+
+        function renderPaymentInstructions() {
+            const method = getSelectedMethod();
+            const coins = getRechargeCoins();
+            const isValid = isValidRechargeCoins(coins);
+            const totalBirr = coins * COIN_PRICE_BIRR;
+
+            if (!isValid || !method) {
+                $("#paymentInstructionsWrapper").html("");
+                return;
+            }
+
+            if (method === "bank_transfer") {
+                $("#paymentInstructionsWrapper").html(`
+                    <div class="card border-0 shadow-sm bg-light">
+                        <div class="card-body">
+                            <h6 class="mb-2">Bank Transfer (Commercial Bank of Ethiopia)</h6>
+                            <div class="small text-muted mb-3">Account Number: <strong class="text-dark">100000000</strong></div>
+                            <ul class="small text-muted mb-0 ps-3">
+                                <li>Deposit the exact amount shown above: <strong class="text-dark">${totalBirr} Birr</strong>.</li>
+                                <li>Use your real name when making the payment.</li>
+                                <li>After payment, provide the name used during the bank transfer in the payment reference section.</li>
+                                <li>Your recharge request will be reviewed by an administrator before coins are added to your account.</li>
+                            </ul>
+                        </div>
+                    </div>
+                `);
+            } else if (method === "telebirr") {
+                $("#paymentInstructionsWrapper").html(`
+                    <div class="card border-0 shadow-sm bg-light">
+                        <div class="card-body">
+                            <h6 class="mb-2">Telebirr Payment</h6>
+                            <div class="small text-muted mb-3">Telebirr Number: <strong class="text-dark">0909090909</strong></div>
+                            <ul class="small text-muted mb-0 ps-3">
+                                <li>Send the exact amount shown above: <strong class="text-dark">${totalBirr} Birr</strong>.</li>
+                                <li>After payment, provide the phone number used for payment and the name registered on the Telebirr account.</li>
+                                <li>Your recharge request will be reviewed by an administrator before coins are added to your account.</li>
+                            </ul>
+                        </div>
+                    </div>
+                `);
+            }
+        }
+
+        function updatePaymentFields() {
+            const coins = getRechargeCoins();
+            const isValid = isValidRechargeCoins(coins);
+            const method = getSelectedMethod();
+
+            $("#paymentMethod").prop("disabled", !isValid);
+
+            if (!coins) {
+                $("#coinValidationMessage").addClass("d-none").text("");
+            } else if (!isValid) {
+                $("#coinValidationMessage")
+                    .removeClass("d-none")
+                    .text(`Minimum purchase is ${MIN_RECHARGE_COINS} coins.`);
+            } else {
+                $("#coinValidationMessage").addClass("d-none").text("");
+            }
+
+            if (!isValid) {
+                $("#paymentMethod").val("");
+                $("#paymentReferencePrimary").prop("disabled", true).val("");
+                $("#paymentReferenceSecondary").prop("disabled", true).val("");
+                $("#paymentReferencePrimary")
+                    .attr("placeholder", "Payment reference");
+                $("#paymentReferenceSecondary")
+                    .attr("placeholder", "Additional payment detail");
+                $("#paymentReferencePrimaryHint").text("Enter a valid coin amount to continue.");
+                $("#paymentReferenceSecondaryHint").text("This field changes based on your payment method.");
+                renderPaymentInstructions();
+                return;
+            }
+
+            if (method === "bank_transfer") {
+                $("#paymentReferencePrimary")
+                    .prop("disabled", false)
+                    .attr("placeholder", "Account holder name used for payment");
+                $("#paymentReferenceSecondary")
+                    .prop("disabled", true)
+                    .val("")
+                    .attr("placeholder", "Not required for bank transfer");
+                $("#paymentReferencePrimaryHint").text("Enter the bank account holder name used during the transfer.");
+                $("#paymentReferenceSecondaryHint").text("No additional field is required for bank transfer.");
+            } else if (method === "telebirr") {
+                $("#paymentReferencePrimary")
+                    .prop("disabled", false)
+                    .attr("placeholder", "Telebirr phone number");
+                $("#paymentReferenceSecondary")
+                    .prop("disabled", false)
+                    .attr("placeholder", "Account holder name");
+                $("#paymentReferencePrimaryHint").text("Enter the phone number used for the Telebirr payment.");
+                $("#paymentReferenceSecondaryHint").text("Enter the name registered on the Telebirr account.");
+            } else {
+                $("#paymentReferencePrimary")
+                    .prop("disabled", true)
+                    .val("")
+                    .attr("placeholder", "Payment reference");
+                $("#paymentReferenceSecondary")
+                    .prop("disabled", true)
+                    .val("")
+                    .attr("placeholder", "Additional payment detail");
+                $("#paymentReferencePrimaryHint").text("Choose a payment method to continue.");
+                $("#paymentReferenceSecondaryHint").text("This field changes based on your payment method.");
+            }
+
+            renderPaymentInstructions();
+        }
+
+        function buildPaymentReference() {
+            const method = getSelectedMethod();
+            const primary = $("#paymentReferencePrimary").val().trim();
+            const secondary = $("#paymentReferenceSecondary").val().trim();
+
+            if (method === "bank_transfer") {
+                if (!primary) return null;
+                return `Account Holder Name: ${primary}`;
+            }
+
+            if (method === "telebirr") {
+                if (!primary || !secondary) return null;
+                return `Telebirr Phone Number: ${primary} | Account Holder Name: ${secondary}`;
+            }
+
+            return null;
+        }
+
         function loadWallet() {
             $("#transactionsList").html("<div class='text-muted'>Loading transactions...</div>");
             $("#requestsList").html("<div class='text-muted'>Loading recharge requests...</div>");
@@ -144,7 +330,7 @@
                                     <strong>${request.requested_coins} coins</strong>
                                     <span class="badge bg-secondary">${request.status}</span>
                                 </div>
-                                <div class="text-muted small">${request.payment_method} | ${request.payment_reference}</div>
+                                <div class="text-muted small">${formatPaymentMethod(request.payment_method)} | ${request.payment_reference}</div>
                             </div>
                         `).join("")
                         : "<div class='text-muted'>No recharge requests yet.</div>";
@@ -160,7 +346,36 @@
             });
         }
 
+        $("#rechargeCoins").on("input", function () {
+            updatePricingSummary();
+            updatePaymentFields();
+        });
+
+        $("#paymentMethod").on("change", function () {
+            updatePaymentFields();
+        });
+
         $("#submitRecharge").on("click", function () {
+            const requestedCoins = getRechargeCoins();
+            const paymentMethod = getSelectedMethod();
+            const paymentReference = buildPaymentReference();
+
+            if (!isValidRechargeCoins(requestedCoins)) {
+                showToast("Minimum recharge amount is 10 coins.", "warning");
+                updatePaymentFields();
+                return;
+            }
+
+            if (!paymentMethod) {
+                showToast("Choose a payment method after entering a valid coin amount.", "warning");
+                return;
+            }
+
+            if (!paymentReference) {
+                showToast("Fill in the required payment reference details.", "warning");
+                return;
+            }
+
             const restoreButton = setButtonLoading($(this), "Submitting...");
             $.ajax({
                 url: window.location.origin + "/payment-requests",
@@ -168,15 +383,18 @@
                 contentType: "application/json",
                 headers: headers(),
                 data: JSON.stringify({
-                    requested_coins: $("#rechargeCoins").val(),
-                    payment_method: $("#paymentMethod").val(),
-                    payment_reference: $("#paymentReference").val()
+                    requested_coins: requestedCoins,
+                    payment_method: paymentMethod,
+                    payment_reference: paymentReference
                 }),
                 success(res) {
                     showToast(res.message, "success");
                     $("#rechargeCoins").val("");
                     $("#paymentMethod").val("");
-                    $("#paymentReference").val("");
+                    $("#paymentReferencePrimary").val("");
+                    $("#paymentReferenceSecondary").val("");
+                    updatePricingSummary();
+                    updatePaymentFields();
                     loadWallet();
                 },
                 error(xhr) {
@@ -193,6 +411,8 @@
         } else if (currentUser.role === "admin") {
             window.location.href = "admin-dashboard.html";
         } else {
+            updatePricingSummary();
+            updatePaymentFields();
             loadWallet();
         }
     </script>

@@ -2896,18 +2896,33 @@ app.get("/wallet", authMiddleware, async (req, res) => {
 
 app.post("/payment-requests", authMiddleware, async (req, res) => {
   try {
-    const { requested_coins, payment_method, payment_reference } = req.body;
+    const requestedCoins = Number(req.body.requested_coins);
+    const paymentMethod = String(req.body.payment_method || "").trim();
+    const paymentReference = String(req.body.payment_reference || "").trim();
+    const allowedPaymentMethods = new Set(["bank_transfer", "telebirr"]);
 
-    if (!requested_coins || !payment_method || !payment_reference) {
+    if (!requestedCoins || !paymentMethod || !paymentReference) {
       return res.status(400).json({
         message: "Coins, payment method, and payment reference are required",
+      });
+    }
+
+    if (!Number.isInteger(requestedCoins) || requestedCoins < 10) {
+      return res.status(400).json({
+        message: "Minimum recharge amount is 10 coins",
+      });
+    }
+
+    if (!allowedPaymentMethods.has(paymentMethod)) {
+      return res.status(400).json({
+        message: "Invalid payment method selected",
       });
     }
 
     const result = await queryAsync(
       `INSERT INTO payment_requests (user_id, requested_coins, payment_method, payment_reference)
        VALUES (?, ?, ?, ?)`,
-      [req.user.userId, requested_coins, payment_method, payment_reference],
+      [req.user.userId, requestedCoins, paymentMethod, paymentReference],
     );
 
     res.status(201).json({
