@@ -214,6 +214,14 @@ $("#signUpForm").on("submit", function (e) {
 
   if (!isValid) return;
 
+  if (!$("#agreeTerms").is(":checked")) {
+    showToastMessage(
+      "You must agree to the Privacy Policy and Terms of Service",
+      "warning",
+    );
+    return;
+  }
+
   if ($("#password").val() !== $("#confirmPassword").val()) {
     showToastMessage("Passwords do not match", "warning");
     return;
@@ -226,6 +234,7 @@ $("#signUpForm").on("submit", function (e) {
     email: $("#email").val(),
     phone: $("#phone").val(),
     password: $("#password").val(),
+    agreedToTerms: $("#agreeTerms").is(":checked"),
   };
 
   $.ajax({
@@ -258,6 +267,10 @@ $("#fullName, #email, #phone, #password, #confirmPassword").on(
     }
   },
 );
+
+$("#agreeTerms").on("change", function () {
+  $("#signUpButton").prop("disabled", !$(this).is(":checked"));
+});
 
 // -------- SUBMIT VALIDATION FOR LOG IN PAGE--------
 

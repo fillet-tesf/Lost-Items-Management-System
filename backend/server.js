@@ -1978,10 +1978,16 @@ app.get("/admin/items/pending", authMiddleware, (req, res) => {
 // sign up page
 
 app.post("/signup", (req, res) => {
-  const { fullName, email, phone, password } = req.body;
+  const { fullName, email, phone, password, agreedToTerms } = req.body;
 
   if (!fullName || !email || !password) {
     return res.status(400).json({ message: "Missing required fields" });
+  }
+
+  if (!agreedToTerms) {
+    return res.status(400).json({
+      message: "You must agree to the Privacy Policy and Terms of Service",
+    });
   }
 
   // Hash password

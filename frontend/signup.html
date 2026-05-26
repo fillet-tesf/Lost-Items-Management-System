@@ -53,8 +53,16 @@
                     <input id="confirmPassword" type="password" class="form-control" placeholder="Confirm password">
                 </div>
 
+                <div class="mb-3 form-check">
+                    <input class="form-check-input" type="checkbox" id="agreeTerms">
+                    <label class="form-check-label" for="agreeTerms">
+                        I have read and agree to the
+                        <a href="privacy-terms.html" target="_blank" rel="noopener noreferrer">Privacy Policy and Terms of Service</a>.
+                    </label>
+                </div>
+
                 <div class="d-grid">
-                    <button type="submit" class="btn btn-primary">Sign Up</button>
+                    <button type="submit" id="signUpButton" class="btn btn-primary" disabled>Sign Up</button>
                 </div>
             </form>
 

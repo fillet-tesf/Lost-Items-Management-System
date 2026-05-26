@@ -215,8 +215,6 @@
                                 class="bi bi-house me-1"></i>Home</a></li>
                     <li class="nav-item"><a class="nav-link" href="upload.html"><i
                                 class="bi bi-plus-circle me-1"></i>Report Item</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#" id="aboutLink"><i
-                                class="bi bi-info-circle me-1"></i>About</a></li>
                     <li class="nav-item"><a class="nav-link" href="login.html"><i
                                 class="bi bi-box-arrow-in-right me-1"></i>Login</a></li>
                     <li class="nav-item"><a class="nav-link" href="signup.html"><i
@@ -432,20 +430,19 @@
                 <div class="col-lg-2 col-md-6">
                     <h6 class="mb-3">Support</h6>
                     <ul class="list-unstyled">
-                        <li class="mb-2"><a href="#" class="text-decoration-none">Help Center</a></li>
-                        <li class="mb-2"><a href="#" class="text-decoration-none">FAQ</a></li>
-                        <li class="mb-2"><a href="#" class="text-decoration-none">Contact Us</a></li>
-                        <li class="mb-2"><a href="#" class="text-decoration-none">Guidelines</a></li>
+                        <li class="mb-2"><a href="faq.html" class="text-decoration-none">FAQ</a></li>
+                        <li class="mb-2"><a href="guidelines.html" class="text-decoration-none">Guidelines</a></li>
+                        <li class="mb-2"><a href="privacy-terms.html" class="text-decoration-none">Privacy Policy & Terms</a></li>
                     </ul>
                 </div>
                 <div class="col-lg-4 col-md-6">
                     <h6 class="mb-3">Stay Connected</h6>
                     <p class="text-muted">Subscribe to get updates about new features and important announcements.</p>
                     <div class="mb-3">
-                        <a href="#" class="me-3"><i class="bi bi-facebook fs-5"></i></a>
-                        <a href="#" class="me-3"><i class="bi bi-twitter fs-5"></i></a>
-                        <a href="#" class="me-3"><i class="bi bi-instagram fs-5"></i></a>
-                        <a href="#" class="me-3"><i class="bi bi-linkedin fs-5"></i></a>
+                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" class="me-3"><i class="bi bi-facebook fs-5"></i></a>
+                        <a href="https://x.com" target="_blank" rel="noopener noreferrer" class="me-3"><i class="bi bi-twitter-x fs-5"></i></a>
+                        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" class="me-3"><i class="bi bi-instagram fs-5"></i></a>
+                        <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" class="me-3"><i class="bi bi-linkedin fs-5"></i></a>
                     </div>
                 </div>
             </div>
@@ -455,8 +452,7 @@
                     <p class="mb-0 text-muted">&copy; 2026 Lost Items Management System. All rights reserved.</p>
                 </div>
                 <div class="col-md-6 text-md-end">
-                    <a href="#" class="text-decoration-none me-3">Privacy Policy</a>
-                    <a href="#" class="text-decoration-none">Terms of Service</a>
+                    <a href="privacy-terms.html" class="text-decoration-none">Privacy Policy & Terms of Service</a>
                 </div>
             </div>
         </div>
@@ -469,13 +465,6 @@
 
     <script>
         $(function () {
-            $(document).on("click", "#aboutLink", function (e) {
-                e.preventDefault();
-                if (window.LIMS_UI && window.LIMS_UI.showToast) {
-                    window.LIMS_UI.showToast("About page coming soon!", "info");
-                }
-            });
-
             $("#searchForm").submit(function (e) {
                 e.preventDefault();
 

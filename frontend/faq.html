@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FAQ | LIMS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+      <a class="navbar-brand fw-bold" href="index.html"><i class="bi bi-shield-check me-2"></i>LIMS</a>
+      <div class="ms-auto"><a class="btn btn-outline-light btn-sm" href="index.html">Back Home</a></div>
+    </div>
+  </nav>
+
+  <main class="container py-5">
+    <div class="text-center mb-4">
+      <h1 class="fw-bold">Frequently Asked Questions</h1>
+      <p class="text-muted mb-0">Quick answers about accounts, reports, claims, coins, and platform safety.</p>
+    </div>
+
+    <div class="accordion" id="faqAccordion">
+      <div class="accordion-item">
+        <h2 class="accordion-header"><button class="accordion-button" data-bs-toggle="collapse" data-bs-target="#faqAccount">Account</button></h2>
+        <div id="faqAccount" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            <p><strong>How do I create an account?</strong><br>Open Sign Up, enter your details, accept the Privacy Policy & Terms, and submit.</p>
+            <p><strong>Why do I need to verify my information?</strong><br>Accurate information helps reduce fraud, improves trust, and supports safe contact-sharing workflows.</p>
+            <p class="mb-0"><strong>How do I reset my password?</strong><br>Use the Forgot Password flow from the login page and follow the instructions.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#faqLost">Lost Items</button></h2>
+        <div id="faqLost" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            <p><strong>How do I report a lost item?</strong><br>Sign in, open Report Item, select lost type, add full details and submit.</p>
+            <p><strong>Can I edit my report later?</strong><br>Yes. You can update your own active report from your dashboard item management screens.</p>
+            <p class="mb-0"><strong>What happens after I submit a report?</strong><br>The report enters platform workflows, and matching logic can suggest potential found-item links.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#faqFound">Found Items</button></h2>
+        <div id="faqFound" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            <p><strong>How do I report a found item?</strong><br>Sign in, submit a found-item report with accurate category, location, date, and photos when possible.</p>
+            <p class="mb-0"><strong>How does matching work?</strong><br>The system compares item attributes to surface likely matches and notifies relevant users.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#faqClaims">Claims</button></h2>
+        <div id="faqClaims" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            <p><strong>How do I claim an item?</strong><br>From a suggested match, request contact through the platform process.</p>
+            <p><strong>What happens after I request contact information?</strong><br>The finder receives a notification and may share contact details through approved options.</p>
+            <p class="mb-0"><strong>When is an item marked as successfully returned?</strong><br>After the handoff is confirmed in the platform workflow by both sides.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#faqCoins">Coins</button></h2>
+        <div id="faqCoins" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            <p><strong>What are coins used for?</strong><br>Coins support selected report actions and platform incentives.</p>
+            <p><strong>How can I earn coins?</strong><br>Users can earn rewards through successful return outcomes.</p>
+            <p class="mb-0"><strong>How do coin recharges work?</strong><br>Recharge requests are submitted and processed via approved payment and review flows.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#faqReputation">Ratings and Badges</button></h2>
+        <div id="faqReputation" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            <p><strong>What are user ratings?</strong><br>Ratings reflect user experience after claim completion and help others assess trust.</p>
+            <p><strong>What do badges mean?</strong><br>Badges indicate trust milestones and warning signals based on activity patterns.</p>
+            <p class="mb-0"><strong>What is a warning badge?</strong><br>A warning badge may appear when multiple reports are received and can be reviewed through platform processes.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#faqAdmin">Admin Review</button></h2>
+        <div id="faqAdmin" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            <p><strong>Why was my item rejected?</strong><br>Items may be rejected for incomplete details, policy violations, duplicates, or suspicious content.</p>
+            <p class="mb-0"><strong>How can I appeal a decision?</strong><br>Use available profile/support mechanisms to submit an appeal for manual review.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#faqPrivacy">Privacy</button></h2>
+        <div id="faqPrivacy" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            <p><strong>Is my contact information public?</strong><br>No. Contact details are shared only through platform-controlled claim steps.</p>
+            <p class="mb-0"><strong>Who can see my personal information?</strong><br>Access is limited to system and workflow needs according to platform policy and role-based controls.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
