@@ -1,0 +1,64 @@
+LIMS (Lost Item Management System) Support Knowledge Base
+
+Overview:
+- LIMS helps users report lost and found items, discover potential matches, and coordinate safe item recovery.
+- The platform includes user dashboards, notifications, claims workflows, reporting tools, wallet/coins, ratings, badges, and admin moderation.
+
+Reporting Lost or Found Items:
+- Users sign in and submit item details such as title, category, description, location, date, and optional image.
+- Item type can be "lost" or "found".
+- Accurate details improve matching quality.
+
+Matching:
+- The system computes potential matches between lost and found items.
+- Users can review match suggestions in their dashboard.
+- Match confidence is displayed in the interface.
+
+Claims and Contact Sharing:
+- A user can request contact for a proposed match.
+- Contact sharing follows platform workflow and is not public by default.
+- Claim status can move through stages such as pending, contact_shared, in_progress, completed, or rejected.
+- A claim is considered completed after both sides confirm handoff steps.
+
+Notifications:
+- Users receive notifications for matches, contact requests, claim updates, badge events, and related workflow actions.
+- Notifications can be marked as read.
+
+Coins and Wallet:
+- New users receive starter coins.
+- Coins are used for certain actions such as reporting lost items.
+- Successful return outcomes can reward coins.
+- Users can request coin recharge through payment methods; admins review these requests.
+- Wallet shows coin balance and recent transaction/request history.
+
+Ratings and Badges:
+- Users can rate each other after claim completion.
+- Ratings contribute to average score and trust context.
+- Badges represent trust signals, including return-related badges and warning badges when reports accumulate.
+
+Suspicious User Handling:
+- Users can report suspicious behavior through claim/report workflows.
+- Warning-related trust signals and admin review tools exist for platform safety.
+
+Admin Moderation:
+- Admins review pending/reported items and can verify, reject, or remove content per platform rules.
+- Admins can review claims, suspicious users, payment requests, and logs.
+- Admin actions and safety workflows are part of moderation controls.
+
+Account Management:
+- Users can sign up, log in, update profile details, and manage account actions through the dashboard/profile pages.
+- Password reset is available through the forgot/reset password flow.
+
+Privacy and Terms:
+- LIMS has a combined Privacy Policy & Terms page.
+- The platform collects account, item, workflow, and operational data for service and safety purposes.
+- Users must follow truthful reporting, anti-fraud, anti-spam, and respectful communication expectations.
+
+Guidelines and Safety:
+- Meet in public places.
+- Verify item details before handoff.
+- Avoid sharing unnecessary personal information.
+- Use caution with unknown individuals.
+
+When to escalate:
+- If a user asks for account-specific intervention, payment disputes, unresolved moderation, or uncertain policy outcomes, advise contacting LIMS administrators for direct assistance.

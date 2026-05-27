@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const authMiddleware = require("./authMiddleware");
 const { buildEmailHtml, sendEmail } = require("./services/email");
+const chatbotRouter = require("./routes/chatbot");
 
 // multer configuration for file uploads can be added here if needed
 
@@ -1406,6 +1407,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use("/uploads", express.static("uploads"));
 app.use(express.static(path.join(__dirname, "../frontend"))); // for serving frontend files if needed
+app.use("/api/chatbot", chatbotRouter);
 
 Promise.all([
   ensureReputationTables(),
