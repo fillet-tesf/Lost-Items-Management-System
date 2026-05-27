@@ -47,6 +47,41 @@ const WARNING_BADGE_REMOVED_TITLE = "Warning Badge Removed";
 const RETURN_BADGE_TITLE = "Return Badge Earned";
 const MATCH_SCORE_THRESHOLD = 55;
 const WARNING_REPORT_THRESHOLD = 2;
+const ETHIOPIAN_CITIES = [
+  "Addis Ababa",
+  "Dire Dawa",
+  "Adama (Nazret)",
+  "Hawassa",
+  "Bahir Dar",
+  "Mekelle",
+  "Jimma",
+  "Dessie",
+  "Gondar",
+  "Harar",
+];
+const ETHIOPIAN_REGIONS = [
+  "Afar Region",
+  "Amhara Region",
+  "Oromia Region",
+  "Somali Region",
+  "Tigray Region",
+  "Sidama Region",
+  "Central Ethiopia Region",
+  "South Ethiopia Region",
+  "South West Ethiopia Region",
+  "Benishangul-Gumuz Region",
+  "Gambela Region",
+  "Harari Region",
+];
+const PLACEHOLDER_LOCATIONS = new Set([
+  "main campus",
+  "main library",
+  "library",
+  "cafeteria",
+  "main gate",
+  "lecture hall 5",
+  "dormitory",
+]);
 const STOP_WORDS = new Set([
   "the",
   "and",
@@ -138,6 +173,69 @@ async function ensureSchemaAdditions() {
       FOREIGN KEY (user_id) REFERENCES users(id)
     )`,
   );
+}
+
+async function ensureEthiopianLocations() {
+  const [tableCheck] = await queryAsync(
+    "SHOW TABLES LIKE 'locations'",
+  );
+
+  if (!tableCheck) {
+    return;
+  }
+
+  const targetLocations = [...ETHIOPIAN_CITIES, ...ETHIOPIAN_REGIONS];
+  const existing = await queryAsync(
+    "SELECT id, name FROM locations ORDER BY id ASC",
+  );
+
+  const byNormalizedName = new Map(
+    existing.map((entry) => [String(entry.name || "").trim().toLowerCase(), entry]),
+  );
+  const usedTargetNames = new Set(
+    existing
+      .map((entry) => String(entry.name || "").trim())
+      .filter((name) => targetLocations.includes(name)),
+  );
+
+  for (const row of existing) {
+    const normalized = String(row.name || "").trim().toLowerCase();
+    if (!PLACEHOLDER_LOCATIONS.has(normalized)) {
+      continue;
+    }
+
+    const replacement = targetLocations.find(
+      (name) => !usedTargetNames.has(name),
+    );
+
+    if (!replacement) {
+      break;
+    }
+
+    await queryAsync("UPDATE locations SET name = ? WHERE id = ?", [
+      replacement,
+      row.id,
+    ]);
+    usedTargetNames.add(replacement);
+    byNormalizedName.delete(normalized);
+    byNormalizedName.set(replacement.toLowerCase(), {
+      id: row.id,
+      name: replacement,
+    });
+  }
+
+  const refreshed = await queryAsync("SELECT name FROM locations");
+  const refreshedNames = new Set(
+    refreshed.map((entry) => String(entry.name || "").trim()),
+  );
+
+  for (const locationName of targetLocations) {
+    if (!refreshedNames.has(locationName)) {
+      await queryAsync("INSERT INTO locations (name) VALUES (?)", [
+        locationName,
+      ]);
+    }
+  }
 }
 
 async function ensureUserReputationFlagRow(userId) {
@@ -1309,7 +1407,11 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use("/uploads", express.static("uploads"));
 app.use(express.static(path.join(__dirname, "../frontend"))); // for serving frontend files if needed
 
-Promise.all([ensureReputationTables(), ensureSchemaAdditions()]).catch((error) => {
+Promise.all([
+  ensureReputationTables(),
+  ensureSchemaAdditions(),
+  ensureEthiopianLocations(),
+]).catch((error) => {
   console.error("Failed to ensure reputation schema:", error);
 });
 
