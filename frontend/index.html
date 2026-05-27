@@ -11,9 +11,410 @@
 
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .home-page {
+            --home-bg: #f4f8ff;
+            --ink: #0f172a;
+            --muted: #5b6475;
+            --brand: #1f66ff;
+            --brand-2: #0f3fbb;
+            --surface: #ffffff;
+            --line: #e3e9f4;
+            --success: #14b86f;
+            --danger: #ef476f;
+            font-family: "Outfit", "Segoe UI", sans-serif;
+            background: radial-gradient(circle at 10% -20%, #e7f2ff 0, rgba(231, 242, 255, 0) 40%), var(--home-bg);
+            color: var(--ink);
+        }
+
+        .home-page .home-navbar {
+            position: sticky;
+            top: 12px;
+            z-index: 1000;
+            width: min(1200px, calc(100% - 24px));
+            margin: 12px auto 0;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.36);
+            backdrop-filter: blur(14px);
+            background: linear-gradient(120deg, rgba(12, 31, 78, 0.82), rgba(17, 61, 156, 0.72));
+            box-shadow: 0 12px 32px rgba(2, 12, 36, 0.24);
+            transition: transform .25s ease, box-shadow .25s ease, background .25s ease;
+        }
+
+        .home-page .home-navbar.scrolled {
+            background: linear-gradient(120deg, rgba(7, 20, 53, 0.92), rgba(12, 54, 149, 0.9));
+            box-shadow: 0 14px 34px rgba(7, 20, 53, 0.36);
+        }
+
+        .home-page .brand-logo {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            object-fit: cover;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 8px 18px rgba(3, 12, 30, 0.25);
+        }
+
+        .home-page .brand-title {
+            color: #f6f9ff;
+            letter-spacing: .3px;
+            font-weight: 700;
+            font-size: 1.08rem;
+        }
+
+        .home-page .nav-link {
+            color: rgba(241, 247, 255, 0.88) !important;
+            font-weight: 500;
+            border-radius: 10px;
+            padding: .5rem .9rem !important;
+            transition: .2s ease;
+        }
+
+        .home-page .nav-link:hover,
+        .home-page .nav-link.active {
+            color: #fff !important;
+            background: rgba(255, 255, 255, 0.14);
+            transform: translateY(-1px);
+        }
+
+        .home-page .navbar-toggler {
+            border: none;
+            padding: .35rem;
+            box-shadow: none !important;
+        }
+
+        .home-page .hamburger {
+            width: 28px;
+            height: 20px;
+            display: inline-flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .home-page .hamburger span {
+            height: 2px;
+            background: #fff;
+            border-radius: 2px;
+            transition: .25s ease;
+        }
+
+        .home-page .navbar-toggler[aria-expanded="true"] .hamburger span:nth-child(1) { transform: translateY(9px) rotate(45deg); }
+        .home-page .navbar-toggler[aria-expanded="true"] .hamburger span:nth-child(2) { opacity: 0; }
+        .home-page .navbar-toggler[aria-expanded="true"] .hamburger span:nth-child(3) { transform: translateY(-9px) rotate(-45deg); }
+
+        .home-page .hero-shell {
+            width: min(1200px, calc(100% - 24px));
+            margin: 18px auto 0;
+            border-radius: 28px;
+            overflow: hidden;
+            min-height: 74vh;
+            position: relative;
+            box-shadow: 0 26px 58px rgba(3, 18, 58, .24);
+        }
+
+        .home-page .hero-shell::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 85% 20%, rgba(57, 132, 255, .3), rgba(57, 132, 255, 0) 45%);
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .home-page .hero-bg-layer {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            opacity: 0;
+            transition: opacity 1.2s ease-in-out;
+            will-change: opacity;
+        }
+
+        .home-page .hero-bg-layer.active {
+            opacity: 1;
+        }
+
+        .home-page .hero-bg-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(120deg, rgba(3, 18, 58, .74), rgba(7, 31, 93, .38));
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .home-page .hero-inner {
+            position: relative;
+            z-index: 2;
+            padding: clamp(2rem, 4vw, 3.5rem);
+            min-height: 74vh;
+            display: grid;
+            align-items: center;
+            grid-template-columns: 1.15fr .85fr;
+            gap: 1.5rem;
+            color: #fff;
+        }
+
+        .home-page .hero-title {
+            font-size: clamp(2.2rem, 4.6vw, 4rem);
+            line-height: 1.06;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            text-wrap: balance;
+        }
+
+        .home-page .hero-subtitle {
+            font-size: clamp(1rem, 1.5vw, 1.2rem);
+            max-width: 620px;
+            color: rgba(236, 243, 255, .93);
+            margin-bottom: 1.6rem;
+        }
+
+        .home-page .hero-ctas .btn {
+            border-radius: 999px;
+            padding: .76rem 1.2rem;
+            font-weight: 600;
+            transition: .22s ease;
+        }
+
+        .home-page .hero-ctas .btn:hover { transform: translateY(-2px); }
+
+        .home-page .hero-side-card {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.26);
+            backdrop-filter: blur(10px);
+            border-radius: 18px;
+            padding: 1rem;
+            color: #eaf1ff;
+        }
+
+        .home-page .hero-mini-logo {
+            width: min(100%, 340px);
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, .3);
+            background: rgba(0, 0, 0, .25);
+        }
+
+        .home-page .search-wrap {
+            width: min(1100px, calc(100% - 24px));
+            margin: -42px auto 0;
+            position: relative;
+            z-index: 5;
+        }
+
+        .home-page .search-wrap .card {
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 16px 34px rgba(31, 102, 255, .12);
+        }
+
+        .home-page .search-field {
+            position: relative;
+        }
+
+        .home-page .search-field i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #5c6b84;
+            font-size: .95rem;
+        }
+
+        .home-page .search-field .form-control,
+        .home-page .search-field .form-select {
+            border-radius: 12px;
+            border: 1px solid #d9e4f4;
+            padding: .72rem .9rem .72rem 2rem;
+            font-size: .95rem;
+        }
+
+        .home-page .search-field .form-control:focus,
+        .home-page .search-field .form-select:focus {
+            border-color: #8ab3ff;
+            box-shadow: 0 0 0 .22rem rgba(31, 102, 255, .15);
+        }
+
+        .home-page .section-title {
+            font-size: clamp(1.45rem, 2.1vw, 2rem);
+            font-weight: 700;
+            letter-spacing: .2px;
+            margin-bottom: .35rem;
+        }
+
+        .home-page .section-subtitle {
+            color: var(--muted);
+            margin-bottom: 1.4rem;
+        }
+
+        .home-page .recent-section,
+        .home-page .feature-section,
+        .home-page .stats-section {
+            width: min(1200px, calc(100% - 24px));
+            margin: 3.4rem auto 0;
+        }
+
+        .home-page .item-card {
+            border: 1px solid #e4eaf5;
+            border-radius: 18px;
+            overflow: hidden;
+            transition: .23s ease;
+            box-shadow: 0 8px 20px rgba(11, 36, 92, .08);
+        }
+
+        .home-page .item-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 18px 30px rgba(11, 36, 92, .16);
+        }
+
+        .home-page .item-card .card-img-top { height: 190px !important; }
+
+        .home-page .status-pill {
+            font-size: .72rem;
+            font-weight: 700;
+            letter-spacing: .45px;
+            padding: .42rem .78rem;
+            border-radius: 999px;
+        }
+
+        .home-page .meta-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            color: #61718a;
+            font-size: .82rem;
+            background: #f4f8ff;
+            border: 1px solid #e4ecfb;
+            border-radius: 999px;
+            padding: .28rem .62rem;
+        }
+
+        .home-page .feature-card {
+            border-radius: 18px;
+            border: 1px solid #e5ebf7;
+            background: #fff;
+            box-shadow: 0 10px 22px rgba(11, 36, 92, .08);
+            transition: .22s ease;
+            height: 100%;
+        }
+
+        .home-page .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 14px 26px rgba(11, 36, 92, .14);
+        }
+
+        .home-page .feature-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #eef5ff, #d9e9ff);
+            color: #2459d7;
+            display: inline-grid;
+            place-items: center;
+            font-size: 1.25rem;
+            margin-bottom: .9rem;
+        }
+
+        .home-page .stats-panel {
+            border-radius: 20px;
+            background: linear-gradient(120deg, #0d2f80, #1356df);
+            color: #fff;
+            padding: 1.4rem;
+            box-shadow: 0 20px 34px rgba(19, 86, 223, .28);
+        }
+
+        .home-page .stat-box {
+            border: 1px solid rgba(255, 255, 255, .22);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, .07);
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .home-page .stat-number {
+            font-size: 1.8rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .home-page .footer {
+            margin-top: 3.4rem;
+            padding: 3rem 0 1.5rem;
+            background: linear-gradient(120deg, #0c1737, #12275a);
+        }
+
+        .home-page .footer .social-link {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: inline-grid;
+            place-items: center;
+            border: 1px solid rgba(255, 255, 255, .2);
+            transition: .2s ease;
+        }
+
+        .home-page .footer .social-link:hover {
+            transform: translateY(-3px);
+            background: rgba(255, 255, 255, .14);
+        }
+
+        .home-page .fade-up {
+            opacity: 0;
+            transform: translateY(16px);
+            transition: opacity .45s ease, transform .45s ease;
+        }
+
+        .home-page .fade-up.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (max-width: 992px) {
+            .home-page .hero-inner {
+                grid-template-columns: 1fr;
+                text-align: center;
+                min-height: 68vh;
+            }
+            .home-page .hero-subtitle {
+                margin-inline: auto;
+            }
+            .home-page .hero-side-card {
+                margin-inline: auto;
+                max-width: 520px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .home-page .home-navbar {
+                top: 8px;
+                width: calc(100% - 14px);
+            }
+            .home-page .hero-shell {
+                width: calc(100% - 14px);
+                border-radius: 20px;
+            }
+            .home-page .search-wrap,
+            .home-page .recent-section,
+            .home-page .feature-section,
+            .home-page .stats-section {
+                width: calc(100% - 14px);
+            }
+            .home-page .search-wrap {
+                margin-top: -30px;
+            }
+            .home-page .hero-ctas .btn {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
 
 
@@ -141,18 +542,21 @@
                 $("#itemsContainer").append(`
                         <div class="col-md-6 col-lg-3">
                             <div class="card item-card shadow-sm clickable-item h-100" data-id="${item.id}">
-                                <span class="position-absolute top-0 start-0 m-3 badge ${badgeClass} rounded-pill px-3 py-2" style="z-index: 10; font-size: 0.75rem;">${badgeText}</span>
+                                <span class="position-absolute top-0 start-0 m-3 badge ${badgeClass} status-pill" style="z-index: 10;">${badgeText}</span>
                                 <img src="${image}" class="card-img-top" alt="${item.title}" style="height: 180px; object-fit: cover;">
                                 <div class="card-body d-flex flex-column">
-                                    <h5 class="card-title mb-2" style="font-size: 1rem;">${item.title}</h5>
+                                    <h5 class="card-title mb-2 item-title-link" style="font-size: 1rem;">${item.title}</h5>
                                     <p class="card-text text-muted flex-grow-1" style="font-size: 0.85rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${item.description}</p>
-                                    <div class="mt-2">
-                                        <small class="text-muted d-block">
-                                            <i class="bi bi-geo-alt me-1"></i>${location}
-                                        </small>
-                                        <small class="text-muted d-block">
-                                            <i class="bi bi-clock me-1"></i>${timeAgo}
-                                        </small>
+                                    <div class="mt-2 d-flex flex-wrap gap-2">
+                                        <span class="meta-chip">
+                                            <i class="bi bi-geo-alt"></i>${location}
+                                        </span>
+                                        <span class="meta-chip">
+                                            <i class="bi bi-clock"></i>${timeAgo}
+                                        </span>
+                                    </div>
+                                    <div class="mt-3">
+                                        <button class="btn btn-outline-primary btn-sm w-100">View Details</button>
                                     </div>
                                 </div>
                             </div>
@@ -196,17 +600,22 @@
 
 
 
-<body>
+<body class="home-page">
 
     <!-- ========== NAVBAR ========== -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark home-navbar" id="homeNavbar">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="index.html">
-                <i class="bi bi-shield-check me-2"></i>LIMS
+            <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="index.html">
+                <img src="assets/img/lims-logo.png" alt="LIMS logo" class="brand-logo">
+                <span class="brand-title">LIMS Platform</span>
             </a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
-                <span class="navbar-toggler-icon"></span>
+                <span class="hamburger" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </span>
             </button>
 
             <div class="collapse navbar-collapse" id="navMenu">
@@ -225,46 +634,65 @@
     </nav>
 
     <!-- ========== HERO SECTION ========== -->
-    <section class="hero">
-        <div class="container text-center">
-            <h1>Helping You Reconnect With Your Lost Belongings</h1>
-            <p>Join our community network to quickly report lost items or help return found valuables to their rightful
-                owners.</p>
+    <section class="hero-shell fade-up">
+        <div class="hero-bg-layer active" id="heroBgA"></div>
+        <div class="hero-bg-layer" id="heroBgB"></div>
+        <div class="hero-bg-overlay"></div>
+        <div class="hero-inner">
+            <div>
+                <h1 class="hero-title">Reconnect People With Their Lost Belongings</h1>
+                <p class="hero-subtitle">LIMS helps communities report lost and found items, discover smart matches, and recover belongings through a secure and trusted workflow.</p>
 
-            <div class="mt-4">
-                <a href="upload.html" class="btn btn-light btn-lg me-2">Report Lost Item</a>
-                <a href="upload.html" class="btn btn-outline-light btn-lg">Report Found Item</a>
+                <div class="hero-ctas d-flex flex-wrap gap-2 justify-content-center justify-content-lg-start">
+                    <a href="upload.html" class="btn btn-light btn-lg">Report Lost Item</a>
+                    <a href="upload.html" class="btn btn-outline-light btn-lg">Report Found Item</a>
+                    <a href="search-results.html" class="btn btn-primary btn-lg">Browse Items</a>
+                </div>
+            </div>
+            <div class="hero-side-card">
+                <img src="assets/img/lims-logo.png" alt="LIMS logo" class="hero-mini-logo w-100 mb-3">
+                <h5 class="mb-1">Community-Driven Recovery</h5>
+                <p class="mb-0 small text-white-50">From reporting and matching to secure contact sharing, LIMS keeps the recovery process simple, transparent, and safe.</p>
             </div>
         </div>
     </section>
 
     <!-- ========== SEARCH BAR ========== -->
-    <div class="container search-box">
+    <div class="search-wrap fade-up">
         <div class="card shadow">
-            <div class="card-body">
+            <div class="card-body p-3 p-md-4">
                 <form id="searchForm" class="row g-2">
                     <div class="col-md-4">
-                        <input type="text" class="form-control" placeholder="Search item name">
+                        <div class="search-field">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="form-control" placeholder="Search by title or keyword">
+                        </div>
                     </div>
                     <div class="col-md-3">
-                        <select class="form-select" id="categorySelect">
-                            <option selected value="">Category</option>
-                            <option value="1">Phone</option>
-                            <option value="2">ID Card</option>
-                            <option value="3">Wallet</option>
-                            <option value="4">Document</option>
-                        </select>
+                        <div class="search-field">
+                            <i class="bi bi-tags"></i>
+                            <select class="form-select" id="categorySelect">
+                                <option selected value="">Category</option>
+                                <option value="1">Phone</option>
+                                <option value="2">ID Card</option>
+                                <option value="3">Wallet</option>
+                                <option value="4">Document</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="col-md-3">
-                        <select class="form-select" id="locationSelect">
-                            <option selected value="">Location</option>
-                            <option value="1">Addis Ababa</option>
-                            <option value="2">Dire Dawa</option>
-                            <option value="3">Adama (Nazret)</option>
-                        </select>
+                        <div class="search-field">
+                            <i class="bi bi-geo-alt"></i>
+                            <select class="form-select" id="locationSelect">
+                                <option selected value="">Location</option>
+                                <option value="1">Addis Ababa</option>
+                                <option value="2">Dire Dawa</option>
+                                <option value="3">Adama (Nazret)</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="col-md-2 d-grid">
-                        <button type="submit" class="btn btn-primary">Search</button>
+                        <button type="submit" class="btn btn-primary">Search Items</button>
                     </div>
                 </form>
             </div>
@@ -273,8 +701,14 @@
 
 
     <!-- ========== RECENT ITEMS ========== -->
-    <div class="container mt-5">
-        <h3 class="mb-4 text-center">Recent Activity</h3>
+    <section class="recent-section fade-up">
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+            <div>
+                <h3 class="section-title">Recent Activity</h3>
+                <p class="section-subtitle mb-0">Latest lost and found updates from the community network.</p>
+            </div>
+            <a href="search-results.html" class="btn btn-outline-primary btn-sm">View All Items</a>
+        </div>
 
         <div id="itemsContainer" class="row g-4">
 
@@ -368,44 +802,90 @@
             </div>
 
         </div>
-    </div>
+    </section>
 
-    <!-- ========== HOW IT WORKS ========== -->
-    <div class="container mt-5 py-5">
-        <h3 class="mb-5 text-center">How It Works</h3>
-        <div class="row g-4">
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm text-center p-4">
-                    <div class="mb-3">
-                        <i class="bi bi-file-earmark-plus display-4 text-primary"></i>
+    <section class="stats-section fade-up">
+        <div class="stats-panel">
+            <div class="row g-3">
+                <div class="col-6 col-lg-3">
+                    <div class="stat-box">
+                        <div class="stat-number" data-count="1200">0</div>
+                        <div class="small text-white-50">Items Reported</div>
                     </div>
-                    <h4 class="mb-3">1. Submit a Report</h4>
-                    <p class="text-muted">File a detailed report about your lost or found item with photos and
-                        descriptions to help with identification.</p>
                 </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm text-center p-4">
-                    <div class="mb-3">
-                        <i class="bi bi-search display-4 text-primary"></i>
+                <div class="col-6 col-lg-3">
+                    <div class="stat-box">
+                        <div class="stat-number" data-count="760">0</div>
+                        <div class="small text-white-50">Matches Suggested</div>
                     </div>
-                    <h4 class="mb-3">2. Smart Matching</h4>
-                    <p class="text-muted">Our system intelligently matches lost items with found reports using advanced
-                        algorithms to find potential matches.</p>
                 </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm text-center p-4">
-                    <div class="mb-3">
-                        <i class="bi bi-hand-thumbs-up display-4 text-primary"></i>
+                <div class="col-6 col-lg-3">
+                    <div class="stat-box">
+                        <div class="stat-number" data-count="540">0</div>
+                        <div class="small text-white-50">Claims Completed</div>
                     </div>
-                    <h4 class="mb-3">3. Reconnect</h4>
-                    <p class="text-muted">Connect securely with finders or owners through our platform to safely return
-                        belongings to their rightful owners.</p>
+                </div>
+                <div class="col-6 col-lg-3">
+                    <div class="stat-box">
+                        <div class="stat-number" data-count="98">0</div>
+                        <div class="small text-white-50">Satisfaction Rate %</div>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
+
+    <!-- ========== FEATURES ========== -->
+    <section class="feature-section fade-up pb-4">
+        <div class="text-center mb-4">
+            <h3 class="section-title">Why People Trust LIMS</h3>
+            <p class="section-subtitle">Built for secure, transparent, and intelligent lost-item recovery.</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card p-4">
+                    <span class="feature-icon"><i class="bi bi-intersect"></i></span>
+                    <h5>Smart Matching</h5>
+                    <p class="text-muted mb-0">Automatically compares lost and found details to surface likely matches quickly.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card p-4">
+                    <span class="feature-icon"><i class="bi bi-shield-lock"></i></span>
+                    <h5>Secure Contact Exchange</h5>
+                    <p class="text-muted mb-0">Contact details are shared through controlled claim workflows, not publicly exposed.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card p-4">
+                    <span class="feature-icon"><i class="bi bi-patch-check"></i></span>
+                    <h5>Reputation & Badges</h5>
+                    <p class="text-muted mb-0">Community trust signals from ratings and badges make interactions safer.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card p-4">
+                    <span class="feature-icon"><i class="bi bi-coin"></i></span>
+                    <h5>Coin Reward System</h5>
+                    <p class="text-muted mb-0">Encourages responsible reporting and successful returns through coin mechanics.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card p-4">
+                    <span class="feature-icon"><i class="bi bi-bell"></i></span>
+                    <h5>Real-time Notifications</h5>
+                    <p class="text-muted mb-0">Stay updated on matches, claims, moderation, and status changes instantly.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="feature-card p-4">
+                    <span class="feature-icon"><i class="bi bi-robot"></i></span>
+                    <h5>AI Support Assistant</h5>
+                    <p class="text-muted mb-0">Get quick guidance for platform workflows, policies, and account help.</p>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <!-- ========== FOOTER ========== -->
     <footer class="footer">
@@ -440,10 +920,10 @@
                     <h6 class="mb-3">Stay Connected</h6>
                     <p class="text-muted">Subscribe to get updates about new features and important announcements.</p>
                     <div class="mb-3">
-                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" class="me-3"><i class="bi bi-facebook fs-5"></i></a>
-                        <a href="https://x.com" target="_blank" rel="noopener noreferrer" class="me-3"><i class="bi bi-twitter-x fs-5"></i></a>
-                        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" class="me-3"><i class="bi bi-instagram fs-5"></i></a>
-                        <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" class="me-3"><i class="bi bi-linkedin fs-5"></i></a>
+                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" class="me-2 social-link"><i class="bi bi-facebook fs-6"></i></a>
+                        <a href="https://x.com" target="_blank" rel="noopener noreferrer" class="me-2 social-link"><i class="bi bi-twitter-x fs-6"></i></a>
+                        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" class="me-2 social-link"><i class="bi bi-instagram fs-6"></i></a>
+                        <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" class="me-2 social-link"><i class="bi bi-linkedin fs-6"></i></a>
                     </div>
                 </div>
             </div>
@@ -466,6 +946,88 @@
 
     <script>
         $(function () {
+            const heroImages = [
+                "assets/img/hero-lims.png",
+                "assets/img/home/story-1.jpg",
+                "assets/img/home/story-2.jpg",
+                "assets/img/home/story-3.jpg",
+                "assets/img/home/story-4.jpg"
+            ];
+            const bgA = document.getElementById("heroBgA");
+            const bgB = document.getElementById("heroBgB");
+            let activeLayer = bgA;
+            let idleLayer = bgB;
+            let heroIndex = 0;
+
+            function setLayerImage(layer, src) {
+                layer.style.backgroundImage = `url("${src}")`;
+            }
+
+            // Preload to reduce flicker
+            heroImages.forEach((src) => {
+                const img = new Image();
+                img.src = src;
+            });
+
+            setLayerImage(activeLayer, heroImages[heroIndex]);
+
+            setInterval(function () {
+                heroIndex = (heroIndex + 1) % heroImages.length;
+                setLayerImage(idleLayer, heroImages[heroIndex]);
+                idleLayer.classList.add("active");
+                activeLayer.classList.remove("active");
+
+                const temp = activeLayer;
+                activeLayer = idleLayer;
+                idleLayer = temp;
+            }, 5000);
+
+            const $navbar = $("#homeNavbar");
+            $(window).on("scroll", function () {
+                $navbar.toggleClass("scrolled", window.scrollY > 14);
+            });
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add("show");
+                    }
+                });
+            }, { threshold: 0.16 });
+
+            document.querySelectorAll(".fade-up").forEach((node) => observer.observe(node));
+
+            const animateCounters = () => {
+                document.querySelectorAll("[data-count]").forEach((counter) => {
+                    const target = Number(counter.getAttribute("data-count") || 0);
+                    if (!target || counter.dataset.animated === "true") return;
+                    counter.dataset.animated = "true";
+                    let value = 0;
+                    const step = Math.max(1, Math.floor(target / 50));
+                    const tick = () => {
+                        value += step;
+                        if (value >= target) {
+                            counter.textContent = String(target);
+                            return;
+                        }
+                        counter.textContent = String(value);
+                        requestAnimationFrame(tick);
+                    };
+                    tick();
+                });
+            };
+
+            const statsObserver = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        animateCounters();
+                    }
+                });
+            }, { threshold: 0.25 });
+
+            const statsPanel = document.querySelector(".stats-panel");
+            if (statsPanel) statsObserver.observe(statsPanel);
+
             $("#searchForm").submit(function (e) {
                 e.preventDefault();
 
