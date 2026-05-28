@@ -141,6 +141,30 @@
         let html = escapeHtml(text);
         html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
         html = html.replace(/`(.+?)`/g, "<code>$1</code>");
+        html = html.replace(
+          /(?:^|\n)([-*]\s.+(?:\n[-*]\s.+)*)/g,
+          (block) => {
+            const items = block
+              .trim()
+              .split("\n")
+              .map((line) => line.replace(/^[-*]\s/, "").trim())
+              .map((item) => `<li>${item}</li>`)
+              .join("");
+            return `<ul>${items}</ul>`;
+          },
+        );
+        html = html.replace(
+          /(?:^|\n)(\d+\.\s.+(?:\n\d+\.\s.+)*)/g,
+          (block) => {
+            const items = block
+              .trim()
+              .split("\n")
+              .map((line) => line.replace(/^\d+\.\s/, "").trim())
+              .map((item) => `<li>${item}</li>`)
+              .join("");
+            return `<ol>${items}</ol>`;
+          },
+        );
         html = html.replace(/\n/g, "<br>");
         return html;
       }

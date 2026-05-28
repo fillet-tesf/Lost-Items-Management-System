@@ -809,29 +809,30 @@
             <div class="row g-3">
                 <div class="col-6 col-lg-3">
                     <div class="stat-box">
-                        <div class="stat-number" data-count="1200">0</div>
+                        <div class="stat-number" id="itemsReportedStat" data-count="0">0</div>
                         <div class="small text-white-50">Items Reported</div>
                     </div>
                 </div>
                 <div class="col-6 col-lg-3">
                     <div class="stat-box">
-                        <div class="stat-number" data-count="760">0</div>
+                        <div class="stat-number" id="matchesSuggestedStat" data-count="0">0</div>
                         <div class="small text-white-50">Matches Suggested</div>
                     </div>
                 </div>
                 <div class="col-6 col-lg-3">
                     <div class="stat-box">
-                        <div class="stat-number" data-count="540">0</div>
+                        <div class="stat-number" id="claimsCompletedStat" data-count="0">0</div>
                         <div class="small text-white-50">Claims Completed</div>
                     </div>
                 </div>
                 <div class="col-6 col-lg-3">
                     <div class="stat-box">
-                        <div class="stat-number" data-count="98">0</div>
-                        <div class="small text-white-50">Satisfaction Rate %</div>
+                        <div class="stat-number" id="trustedByStat" data-count="0" data-skip-counter="true">0+</div>
+                        <div class="small text-white-50">Trusted By</div>
                     </div>
                 </div>
             </div>
+            <div id="statsStatus" class="small text-white-50 mt-2">Loading live stats...</div>
         </div>
     </section>
 
@@ -982,6 +983,33 @@
                 idleLayer = temp;
             }, 5000);
 
+            function formatTrustedBy(value) {
+                const count = Number(value || 0);
+                if (count >= 1000000) return `${Math.floor(count / 1000000)}M+`;
+                if (count >= 1000) return `${Math.floor(count / 1000)}K+`;
+                if (count >= 100) return `${Math.floor(count / 100) * 100}+`;
+                if (count >= 50) return "50+";
+                if (count >= 10) return "10+";
+                if (count > 0) return `${count}+`;
+                return "0+";
+            }
+
+            function setStatsData(stats) {
+                const items = Number(stats.items_reported || 0);
+                const matches = Number(stats.matches_suggested || 0);
+                const claims = Number(stats.claims_completed || 0);
+                const users = Number(stats.trusted_by || 0);
+
+                document.getElementById("itemsReportedStat")?.setAttribute("data-count", String(items));
+                document.getElementById("matchesSuggestedStat")?.setAttribute("data-count", String(matches));
+                document.getElementById("claimsCompletedStat")?.setAttribute("data-count", String(claims));
+
+                const trustedByNode = document.getElementById("trustedByStat");
+                if (trustedByNode) {
+                    trustedByNode.textContent = formatTrustedBy(users);
+                }
+            }
+
             const $navbar = $("#homeNavbar");
             $(window).on("scroll", function () {
                 $navbar.toggleClass("scrolled", window.scrollY > 14);
@@ -999,6 +1027,7 @@
 
             const animateCounters = () => {
                 document.querySelectorAll("[data-count]").forEach((counter) => {
+                    if (counter.getAttribute("data-skip-counter") === "true") return;
                     const target = Number(counter.getAttribute("data-count") || 0);
                     if (!target || counter.dataset.animated === "true") return;
                     counter.dataset.animated = "true";
@@ -1027,6 +1056,27 @@
 
             const statsPanel = document.querySelector(".stats-panel");
             if (statsPanel) statsObserver.observe(statsPanel);
+
+            fetch(window.location.origin + "/home-stats")
+                .then((res) => {
+                    if (!res.ok) {
+                        throw new Error("Stats request failed");
+                    }
+                    return res.json();
+                })
+                .then((stats) => {
+                    setStatsData(stats);
+                    const statusNode = document.getElementById("statsStatus");
+                    if (statusNode) statusNode.textContent = "Live platform stats";
+                    animateCounters();
+                })
+                .catch(() => {
+                    const statusNode = document.getElementById("statsStatus");
+                    if (statusNode) statusNode.textContent = "Could not load live stats right now.";
+                    if (window.LIMS_UI && window.LIMS_UI.showToast) {
+                        window.LIMS_UI.showToast("Failed to load homepage stats", "warning");
+                    }
+                });
 
             $("#searchForm").submit(function (e) {
                 e.preventDefault();

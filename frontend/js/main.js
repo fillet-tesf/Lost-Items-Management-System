@@ -31,6 +31,22 @@ function persistUserCoins(nextCoins) {
   localStorage.setItem("user", JSON.stringify(user));
 }
 
+function isValidEmail(value) {
+  const email = String(value || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidEthiopianPhone(value) {
+  const phone = String(value || "").trim();
+  return /^(?:\+251[79]\d{8}|0[79]\d{8})$/.test(phone);
+}
+
+function isStrongPassword(value) {
+  const password = String(value || "");
+  if (password.length < 6) return false;
+  return /[A-Za-z]/.test(password) && /\d/.test(password);
+}
+
 function loadSelectOptions(endpoint, selector, placeholder) {
   const $select = $(selector);
   if (!$select.length) return;
@@ -227,6 +243,30 @@ $("#signUpForm").on("submit", function (e) {
     return;
   }
 
+  if (!isValidEmail($("#email").val())) {
+    showToastMessage("Enter a valid email address (example: user@gmail.com)", "warning");
+    $("#email").addClass("is-invalid").focus();
+    return;
+  }
+
+  if (!isValidEthiopianPhone($("#phone").val())) {
+    showToastMessage(
+      "Enter a valid Ethiopian phone number: 09XXXXXXXX, 07XXXXXXXX, +2519XXXXXXXX, or +2517XXXXXXXX",
+      "warning",
+    );
+    $("#phone").addClass("is-invalid").focus();
+    return;
+  }
+
+  if (!isStrongPassword($("#password").val())) {
+    showToastMessage(
+      "Password must be at least 6 characters and include at least one letter and one number",
+      "warning",
+    );
+    $("#password").addClass("is-invalid").focus();
+    return;
+  }
+
   const restoreSignupButton = lockSubmitButton($(this), "Creating account...");
 
   const userData = {
@@ -339,6 +379,12 @@ $("#forgotPasswordForm").on("submit", function (e) {
     return;
   }
 
+  if (!isValidEmail(email)) {
+    showToastMessage("Enter a valid email address", "warning");
+    $("#forgotPasswordEmail").addClass("is-invalid").focus();
+    return;
+  }
+
   const restoreButton = lockSubmitButton($(this), "Sending...");
   $.ajax({
     url: window.location.origin + "/forgot-password",
@@ -404,6 +450,14 @@ $("#resetPasswordForm").on("submit", function (e) {
 
   if (newPassword !== confirmPassword) {
     showToastMessage("Passwords do not match", "warning");
+    return;
+  }
+
+  if (!isStrongPassword(newPassword)) {
+    showToastMessage(
+      "Password must be at least 6 characters and include at least one letter and one number",
+      "warning",
+    );
     return;
   }
 

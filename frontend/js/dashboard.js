@@ -90,6 +90,22 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString();
 }
 
+function isValidEmail(value) {
+  const email = String(value || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidEthiopianPhone(value) {
+  const phone = String(value || "").trim();
+  return /^(?:\+251[79]\d{8}|0[79]\d{8})$/.test(phone);
+}
+
+function isStrongPassword(value) {
+  const password = String(value || "");
+  if (password.length < 6) return false;
+  return /[A-Za-z]/.test(password) && /\d/.test(password);
+}
+
 function formatPaymentMethod(method) {
   if (method === "bank_transfer") return "Bank Transfer";
   if (method === "telebirr") return "Telebirr";
@@ -2439,6 +2455,19 @@ $(document).on("click", "#saveProfileBtn", function () {
     return;
   }
 
+  if (!isValidEmail(email)) {
+    showProfileFeedback("Enter a valid email address.", "danger");
+    return;
+  }
+
+  if (!isValidEthiopianPhone(phone)) {
+    showProfileFeedback(
+      "Enter a valid Ethiopian phone number (09XXXXXXXX, 07XXXXXXXX, +2519XXXXXXXX, or +2517XXXXXXXX).",
+      "danger",
+    );
+    return;
+  }
+
   if (newPassword || confirmNewPassword || currentPassword) {
     if (!currentPassword || !newPassword || !confirmNewPassword) {
       showProfileFeedback(
@@ -2449,6 +2478,13 @@ $(document).on("click", "#saveProfileBtn", function () {
     }
     if (newPassword !== confirmNewPassword) {
       showProfileFeedback("New passwords do not match.", "danger");
+      return;
+    }
+    if (!isStrongPassword(newPassword)) {
+      showProfileFeedback(
+        "New password must be at least 6 characters and include at least one letter and one number.",
+        "danger",
+      );
       return;
     }
   }

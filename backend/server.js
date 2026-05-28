@@ -48,6 +48,8 @@ const WARNING_BADGE_REMOVED_TITLE = "Warning Badge Removed";
 const RETURN_BADGE_TITLE = "Return Badge Earned";
 const MATCH_SCORE_THRESHOLD = 55;
 const WARNING_REPORT_THRESHOLD = 2;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ETHIOPIAN_PHONE_REGEX = /^(?:\+251[79]\d{8}|0[79]\d{8})$/;
 const ETHIOPIAN_CITIES = [
   "Addis Ababa",
   "Dire Dawa",
@@ -83,6 +85,22 @@ const PLACEHOLDER_LOCATIONS = new Set([
   "lecture hall 5",
   "dormitory",
 ]);
+
+function isValidEmail(value) {
+  return EMAIL_REGEX.test(String(value || "").trim().toLowerCase());
+}
+
+function isValidEthiopianPhone(value) {
+  return ETHIOPIAN_PHONE_REGEX.test(String(value || "").trim());
+}
+
+function isStrongPassword(value) {
+  const password = String(value || "");
+  if (password.length < 6) return false;
+  const hasLetter = /[A-Za-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  return hasLetter && hasNumber;
+}
 const STOP_WORDS = new Set([
   "the",
   "and",
@@ -1472,6 +1490,35 @@ app.get("/home-items", (req, res) => {
   });
 });
 
+app.get("/home-stats", async (req, res) => {
+  try {
+    const [itemsReported] = await queryAsync(
+      `SELECT COUNT(*) AS total_items
+       FROM items
+       WHERE item_type IN ('lost', 'found')`,
+    );
+    const [matchesSuggested] = await queryAsync(
+      "SELECT COUNT(*) AS total_matches FROM matches",
+    );
+    const [claimsCompleted] = await queryAsync(
+      "SELECT COUNT(*) AS completed_claims FROM item_claims WHERE status = 'completed'",
+    );
+    const [trustedBy] = await queryAsync(
+      "SELECT COUNT(*) AS total_users FROM users WHERE role = 'user'",
+    );
+
+    res.json({
+      items_reported: Number(itemsReported?.total_items || 0),
+      matches_suggested: Number(matchesSuggested?.total_matches || 0),
+      claims_completed: Number(claimsCompleted?.completed_claims || 0),
+      trusted_by: Number(trustedBy?.total_users || 0),
+    });
+  } catch (error) {
+    console.error("Failed to fetch home stats:", error);
+    res.status(500).json({ message: "Failed to fetch home stats" });
+  }
+});
+
 // fetch user's own items
 
 app.get("/my-items", authMiddleware, (req, res) => {
@@ -1611,12 +1658,15 @@ app.put("/profile", authMiddleware, async (req, res) => {
         .json({ message: "All profile fields are required" });
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!isValidEmail(email)) {
       return res.status(400).json({ message: "Enter a valid email address" });
     }
 
-    if (phone.length < 7) {
-      return res.status(400).json({ message: "Enter a valid phone number" });
+    if (!isValidEthiopianPhone(phone)) {
+      return res.status(400).json({
+        message:
+          "Enter a valid Ethiopian phone number (09XXXXXXXX, 07XXXXXXXX, +2519XXXXXXXX, or +2517XXXXXXXX)",
+      });
     }
 
     const changePasswordRequested =
@@ -1635,9 +1685,10 @@ app.put("/profile", authMiddleware, async (req, res) => {
         return res.status(400).json({ message: "New passwords do not match" });
       }
 
-      if (newPassword.length < 6) {
+      if (!isStrongPassword(newPassword)) {
         return res.status(400).json({
-          message: "New password must be at least 6 characters long",
+          message:
+            "New password must be at least 6 characters and include at least one letter and one number",
         });
       }
 
@@ -1688,8 +1739,29 @@ app.put("/profile", authMiddleware, async (req, res) => {
     res.json({ message: "Profile updated successfully" });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
+      const duplicateChecks = await queryAsync(
+        `SELECT
+           EXISTS(SELECT 1 FROM users WHERE email = ? AND id <> ?) AS email_exists,
+           EXISTS(SELECT 1 FROM users WHERE phone = ? AND id <> ?) AS phone_exists`,
+        [email, req.user.userId, phone, req.user.userId],
+      ).catch(() => [{ email_exists: 0, phone_exists: 0 }]);
+
+      const duplicate = duplicateChecks[0] || {};
+      const emailExists = Number(duplicate.email_exists || 0) === 1;
+      const phoneExists = Number(duplicate.phone_exists || 0) === 1;
+
+      if (emailExists && phoneExists) {
+        return res.status(409).json({
+          message: "Email and phone number already exist",
+        });
+      }
+
+      if (phoneExists) {
+        return res.status(409).json({ message: "Phone number already exists" });
+      }
+
       return res.status(409).json({
-        message: "That email or phone number is already in use",
+        message: "Email already exists",
       });
     }
 
@@ -2083,14 +2155,34 @@ app.get("/admin/items/pending", authMiddleware, (req, res) => {
 
 app.post("/signup", (req, res) => {
   const { fullName, email, phone, password, agreedToTerms } = req.body;
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedPhone = String(phone || "").trim();
 
-  if (!fullName || !email || !password) {
+  if (!fullName || !normalizedEmail || !normalizedPhone || !password) {
     return res.status(400).json({ message: "Missing required fields" });
   }
 
   if (!agreedToTerms) {
     return res.status(400).json({
       message: "You must agree to the Privacy Policy and Terms of Service",
+    });
+  }
+
+  if (!isValidEmail(normalizedEmail)) {
+    return res.status(400).json({ message: "Enter a valid email address" });
+  }
+
+  if (!isValidEthiopianPhone(normalizedPhone)) {
+    return res.status(400).json({
+      message:
+        "Enter a valid Ethiopian phone number (09XXXXXXXX, 07XXXXXXXX, +2519XXXXXXXX, or +2517XXXXXXXX)",
+    });
+  }
+
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({
+      message:
+        "Password must be at least 6 characters and include at least one letter and one number",
     });
   }
 
@@ -2107,10 +2199,33 @@ app.post("/signup", (req, res) => {
 
     db.query(
       sql,
-      [fullName, email, phone, hashedPassword],
+      [fullName, normalizedEmail, normalizedPhone, hashedPassword],
       async (err, result) => {
         if (err) {
           if (err.code === "ER_DUP_ENTRY") {
+            const duplicateChecks = await queryAsync(
+              `SELECT
+                 EXISTS(SELECT 1 FROM users WHERE email = ?) AS email_exists,
+                 EXISTS(SELECT 1 FROM users WHERE phone = ?) AS phone_exists`,
+              [normalizedEmail, normalizedPhone],
+            ).catch(() => [{ email_exists: 0, phone_exists: 0 }]);
+
+            const duplicate = duplicateChecks[0] || {};
+            const emailExists = Number(duplicate.email_exists || 0) === 1;
+            const phoneExists = Number(duplicate.phone_exists || 0) === 1;
+
+            if (emailExists && phoneExists) {
+              return res.status(409).json({
+                message: "Email and phone number already exist",
+              });
+            }
+
+            if (phoneExists) {
+              return res
+                .status(409)
+                .json({ message: "Phone number already exists" });
+            }
+
             return res.status(409).json({ message: "Email already exists" });
           }
           return res.status(500).json({ message: "Database error" });
@@ -2196,6 +2311,10 @@ app.post("/forgot-password", async (req, res) => {
       return res.status(400).json({ message: "Email is required" });
     }
 
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "Enter a valid email address" });
+    }
+
     const [userRecord] = await queryAsync(
       "SELECT id, email, full_name FROM users WHERE email = ? LIMIT 1",
       [email],
@@ -2260,9 +2379,10 @@ app.post("/reset-password", async (req, res) => {
       return res.status(400).json({ message: "Passwords do not match" });
     }
 
-    if (newPassword.length < 6) {
+    if (!isStrongPassword(newPassword)) {
       return res.status(400).json({
-        message: "Password must be at least 6 characters long",
+        message:
+          "Password must be at least 6 characters and include at least one letter and one number",
       });
     }
 

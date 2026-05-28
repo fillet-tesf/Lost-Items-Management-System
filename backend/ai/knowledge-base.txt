@@ -1,64 +1,171 @@
-LIMS (Lost Item Management System) Support Knowledge Base
+LIMS (Lost Item Management System) - Expanded Support Knowledge Base
 
-Overview:
-- LIMS helps users report lost and found items, discover potential matches, and coordinate safe item recovery.
-- The platform includes user dashboards, notifications, claims workflows, reporting tools, wallet/coins, ratings, badges, and admin moderation.
+1) Platform Overview
+- LIMS helps users report lost and found items, discover likely matches, and complete safe handoff workflows.
+- Core modules include reporting, matching, claims, notifications, wallet/coins, ratings/badges, user profile, and admin moderation.
+- Public pages include home, search results, FAQ, guidelines, and privacy/terms pages.
 
-Reporting Lost or Found Items:
-- Users sign in and submit item details such as title, category, description, location, date, and optional image.
-- Item type can be "lost" or "found".
-- Accurate details improve matching quality.
+2) Reporting Items
+- Users can report both lost and found items after signing in.
+- Required data generally includes: item type, title, category, location, date, description.
+- Optional item image upload is supported.
+- Better accuracy in title/description/location/category usually improves matching quality.
+- Lost-item reports may involve coin usage according to platform rules.
 
-Matching:
-- The system computes potential matches between lost and found items.
-- Users can review match suggestions in their dashboard.
-- Match confidence is displayed in the interface.
+3) Search and Discovery
+- Users can search and filter by keyword, category, and location.
+- Results are paginated and show current active items.
+- Search is intended for quick browsing of both lost and found entries.
+- If no results are returned, users should broaden terms or remove strict filters.
 
-Claims and Contact Sharing:
-- A user can request contact for a proposed match.
-- Contact sharing follows platform workflow and is not public by default.
-- Claim status can move through stages such as pending, contact_shared, in_progress, completed, or rejected.
-- A claim is considered completed after both sides confirm handoff steps.
+4) Matching System (Automatic + Suggested)
+- LIMS computes candidate matches between lost and found records.
+- Match confidence is shown as a percentage-style score in user-facing match cards.
+- A contact request can only proceed if the match is in an eligible state.
+- The system may avoid duplicate or conflicting match states for the same item pair.
+- Users can reject irrelevant matches to reduce noise.
 
-Notifications:
-- Users receive notifications for matches, contact requests, claim updates, badge events, and related workflow actions.
-- Notifications can be marked as read.
+5) Claims Flow (Manual User Actions)
+- Typical claim lifecycle: pending -> contact_shared -> in_progress -> completed (or rejected/closed).
+- Claimant (lost item owner) requests contact from the finder side.
+- Finder can share approved contact methods through platform controls.
+- Claim completion requires confirmation steps from both sides in workflow-supported states.
+- Rejected claims close the process for that match path.
 
-Coins and Wallet:
-- New users receive starter coins.
-- Coins are used for certain actions such as reporting lost items.
-- Successful return outcomes can reward coins.
-- Users can request coin recharge through payment methods; admins review these requests.
-- Wallet shows coin balance and recent transaction/request history.
+6) Contact Sharing and Safety
+- Contact details are not generally public by default.
+- Sharing is controlled through claim/contact actions.
+- Users should meet in safe public places.
+- Users should verify item details before handoff.
+- Users should avoid sharing unnecessary personal details beyond what is required.
 
-Ratings and Badges:
-- Users can rate each other after claim completion.
-- Ratings contribute to average score and trust context.
-- Badges represent trust signals, including return-related badges and warning badges when reports accumulate.
+7) Notifications
+- Notifications are used for:
+  - new possible matches
+  - contact requests
+  - contact shared/declined updates
+  - claim progression and completion
+  - moderation/trust-related events
+- Unread notifications can be marked as read.
+- Notification cards may include action buttons depending on workflow state.
 
-Suspicious User Handling:
-- Users can report suspicious behavior through claim/report workflows.
-- Warning-related trust signals and admin review tools exist for platform safety.
+8) Coins and Wallet
+- New users can receive starter coins.
+- Coins can be debited/credited depending on workflow actions and outcomes.
+- Successful found-item returns can result in reward credits.
+- Wallet area shows:
+  - balance
+  - transactions
+  - recharge requests and statuses
+- Recharge requests go through admin review.
 
-Admin Moderation:
-- Admins review pending/reported items and can verify, reject, or remove content per platform rules.
-- Admins can review claims, suspicious users, payment requests, and logs.
-- Admin actions and safety workflows are part of moderation controls.
+9) Recharge and Payment Review
+- Users submit recharge requests with payment details/reference.
+- Admin can approve or reject requests.
+- On approval, coins are credited and status is updated.
+- Users should wait for review if a request is still pending.
 
-Account Management:
-- Users can sign up, log in, update profile details, and manage account actions through the dashboard/profile pages.
-- Password reset is available through the forgot/reset password flow.
+10) Ratings, Trust, and Badges
+- Ratings are typically available after completed claim workflows.
+- Users can rate counterparts in completed exchanges.
+- Reputation signals include average rating and badge metadata.
+- Common badge ideas:
+  - return/trust badges for successful behavior
+  - warning badge for repeated report patterns
+- Warning and return badges are used as trust context, not absolute judgment.
 
-Privacy and Terms:
-- LIMS has a combined Privacy Policy & Terms page.
-- The platform collects account, item, workflow, and operational data for service and safety purposes.
-- Users must follow truthful reporting, anti-fraud, anti-spam, and respectful communication expectations.
+11) Suspicious User Handling and Reports
+- Users can report suspicious behavior, fake claims, fraud, harassment, or abuse.
+- Reports can target items or users depending on context.
+- Repeated or severe reports can affect trust indicators.
+- Admin review determines moderation action.
 
-Guidelines and Safety:
-- Meet in public places.
-- Verify item details before handoff.
-- Avoid sharing unnecessary personal information.
-- Use caution with unknown individuals.
+12) Appeals and Warning Handling
+- If warning-related status exists, users may have appeal flows available.
+- Appeal submissions can be reviewed by admins with approve/reject outcomes.
+- Users should provide clear facts and evidence when appealing.
 
-When to escalate:
-- If a user asks for account-specific intervention, payment disputes, unresolved moderation, or uncertain policy outcomes, advise contacting LIMS administrators for direct assistance.
+13) Admin Moderation
+- Admin capabilities include:
+  - verify/reject pending items
+  - review reported items and take action
+  - review claims and suspicious user indicators
+  - review payment/recharge requests
+  - manage warning safety status in certain flows
+- Admin actions may be logged for accountability.
+
+14) Item Verification and Rejection
+- Pending items can be accepted (verified) or rejected by admins.
+- Rejections may include reason notes.
+- Users should correct missing/inaccurate details and resubmit if needed.
+
+15) Account Management
+- Users can sign up and log in.
+- Profile editing includes full name, email, phone, and optional password update.
+- Duplicate email/phone values are not allowed across accounts.
+- Password updates should include current password verification where required.
+
+16) Password Reset and Forgot Password
+- Forgot password flow accepts an email and sends a reset link if valid.
+- Reset links expire and are intended for one-time secure use.
+- If token is invalid/expired, user should request a new reset email.
+
+17) Email Notifications
+- System emails are used for critical workflow events such as reset and claim-related updates.
+- Some flows can respect email notification preferences.
+- Users should ensure their email is correct and accessible.
+
+18) Dashboard Usage (User)
+- User dashboard can include:
+  - summary cards
+  - items list
+  - match suggestions
+  - claim actions
+  - notifications
+  - profile controls
+- Match/claim actions should be done from valid cards/state buttons only.
+
+19) Dashboard Usage (Admin)
+- Admin dashboard can include:
+  - platform stats
+  - pending verification queue
+  - reported items queue
+  - claims monitoring
+  - suspicious user view
+  - payment request review
+  - logs and audit-like entries
+
+20) Privacy Policy and Terms
+- LIMS has a combined privacy and terms page.
+- Users must provide truthful information and avoid fraudulent use.
+- Abuse, spam, or manipulation of workflows can lead to restrictions or suspension.
+- LIMS coordinates platform workflows but does not guarantee item recovery.
+
+21) FAQ and Guidelines Coverage
+- FAQ answers common issues about account, claims, coins, moderation, and privacy.
+- Guidelines emphasize safe exchange behavior and accurate reporting.
+
+22) Common Troubleshooting
+- "I cannot find my item":
+  - check filters, search keywords, category/location, and report status.
+- "No matches yet":
+  - update report details and wait for new found/lost reports.
+- "Contact not shared":
+  - finder side may still be reviewing request or match state changed.
+- "Recharge pending":
+  - wait for admin review.
+- "Reset link failed":
+  - request a new forgot-password email.
+
+23) AI Assistant Scope
+- Assistant only supports LIMS-related platform help.
+- Assistant should refuse unrelated questions (general trivia, coding, politics, entertainment, etc.).
+- Assistant should not invent unsupported features.
+- If uncertain or account-specific action is needed, user should contact LIMS administrators.
+
+24) Escalation Guidance
+- Escalate to admin/support when:
+  - payment disputes cannot be resolved by normal review
+  - false moderation decision needs appeal review
+  - blocked/invalid workflow state seems inconsistent
+  - account access/security issues require direct intervention
