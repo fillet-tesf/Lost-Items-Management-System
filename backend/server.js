@@ -1,4 +1,5 @@
 require("dotenv").config();
+const jwtConfig = require("./config/auth");
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
@@ -34,7 +35,16 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 const app = express();
-const PORT = 3000;
+const portValue = process.env.PORT ?? "3000";
+const PORT = Number(portValue);
+if (
+  !/^\d+$/.test(portValue) ||
+  !Number.isInteger(PORT) ||
+  PORT < 1 ||
+  PORT > 65535
+) {
+  throw new Error("Invalid PORT: expected an integer from 1 to 65535.");
+}
 
 const MATCH_NOTIFICATION_TITLE = "Possible match found";
 const CONTACT_REQUEST_TITLE = "Contact info request";
@@ -50,42 +60,6 @@ const MATCH_SCORE_THRESHOLD = 55;
 const WARNING_REPORT_THRESHOLD = 2;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ETHIOPIAN_PHONE_REGEX = /^(?:\+251[79]\d{8}|0[79]\d{8})$/;
-const ETHIOPIAN_CITIES = [
-  "Addis Ababa",
-  "Dire Dawa",
-  "Adama (Nazret)",
-  "Hawassa",
-  "Bahir Dar",
-  "Mekelle",
-  "Jimma",
-  "Dessie",
-  "Gondar",
-  "Harar",
-];
-const ETHIOPIAN_REGIONS = [
-  "Afar Region",
-  "Amhara Region",
-  "Oromia Region",
-  "Somali Region",
-  "Tigray Region",
-  "Sidama Region",
-  "Central Ethiopia Region",
-  "South Ethiopia Region",
-  "South West Ethiopia Region",
-  "Benishangul-Gumuz Region",
-  "Gambela Region",
-  "Harari Region",
-];
-const PLACEHOLDER_LOCATIONS = new Set([
-  "main campus",
-  "main library",
-  "library",
-  "cafeteria",
-  "main gate",
-  "lecture hall 5",
-  "dormitory",
-]);
-
 function isValidEmail(value) {
   return EMAIL_REGEX.test(String(value || "").trim().toLowerCase());
 }
@@ -129,132 +103,6 @@ function queryAsync(sql, params = []) {
       resolve(results);
     });
   });
-}
-
-async function ensureReputationTables() {
-  await queryAsync(
-    `CREATE TABLE IF NOT EXISTS user_reputation_flags (
-      user_id INT PRIMARY KEY,
-      warning_cleared TINYINT(1) DEFAULT 0,
-      warning_notified TINYINT(1) DEFAULT 0,
-      last_return_badge_notified ENUM('none','blue','green') DEFAULT 'none',
-      warning_cleared_by INT NULL,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (warning_cleared_by) REFERENCES users(id)
-    )`,
-  );
-
-  await queryAsync(
-    `CREATE TABLE IF NOT EXISTS badge_appeals (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      user_id INT NOT NULL,
-      badge_type ENUM('warning') DEFAULT 'warning',
-      reason TEXT NOT NULL,
-      status ENUM('pending','approved','rejected') DEFAULT 'pending',
-      reviewed_by INT NULL,
-      admin_note TEXT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      reviewed_at TIMESTAMP NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (reviewed_by) REFERENCES users(id)
-    )`,
-  );
-}
-
-async function ensureSchemaAdditions() {
-  try {
-    await queryAsync("ALTER TABLE items ADD COLUMN rejection_reason TEXT NULL");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await queryAsync(
-      "ALTER TABLE users ADD COLUMN email_notifications TINYINT(1) DEFAULT 1",
-    );
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  await queryAsync(
-    `CREATE TABLE IF NOT EXISTS password_reset_tokens (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      user_id INT NOT NULL,
-      token_hash VARCHAR(255) NOT NULL,
-      expires_at DATETIME NOT NULL,
-      used_at DATETIME NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    )`,
-  );
-}
-
-async function ensureEthiopianLocations() {
-  const [tableCheck] = await queryAsync(
-    "SHOW TABLES LIKE 'locations'",
-  );
-
-  if (!tableCheck) {
-    return;
-  }
-
-  const targetLocations = [...ETHIOPIAN_CITIES, ...ETHIOPIAN_REGIONS];
-  const existing = await queryAsync(
-    "SELECT id, name FROM locations ORDER BY id ASC",
-  );
-
-  const byNormalizedName = new Map(
-    existing.map((entry) => [String(entry.name || "").trim().toLowerCase(), entry]),
-  );
-  const usedTargetNames = new Set(
-    existing
-      .map((entry) => String(entry.name || "").trim())
-      .filter((name) => targetLocations.includes(name)),
-  );
-
-  for (const row of existing) {
-    const normalized = String(row.name || "").trim().toLowerCase();
-    if (!PLACEHOLDER_LOCATIONS.has(normalized)) {
-      continue;
-    }
-
-    const replacement = targetLocations.find(
-      (name) => !usedTargetNames.has(name),
-    );
-
-    if (!replacement) {
-      break;
-    }
-
-    await queryAsync("UPDATE locations SET name = ? WHERE id = ?", [
-      replacement,
-      row.id,
-    ]);
-    usedTargetNames.add(replacement);
-    byNormalizedName.delete(normalized);
-    byNormalizedName.set(replacement.toLowerCase(), {
-      id: row.id,
-      name: replacement,
-    });
-  }
-
-  const refreshed = await queryAsync("SELECT name FROM locations");
-  const refreshedNames = new Set(
-    refreshed.map((entry) => String(entry.name || "").trim()),
-  );
-
-  for (const locationName of targetLocations) {
-    if (!refreshedNames.has(locationName)) {
-      await queryAsync("INSERT INTO locations (name) VALUES (?)", [
-        locationName,
-      ]);
-    }
-  }
 }
 
 async function ensureUserReputationFlagRow(userId) {
@@ -1427,14 +1275,6 @@ app.use("/uploads", express.static("uploads"));
 app.use(express.static(path.join(__dirname, "../frontend"))); // for serving frontend files if needed
 app.use("/api/chatbot", chatbotRouter);
 
-Promise.all([
-  ensureReputationTables(),
-  ensureSchemaAdditions(),
-  ensureEthiopianLocations(),
-]).catch((error) => {
-  console.error("Failed to ensure reputation schema:", error);
-});
-
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/index.html"));
 });
@@ -2280,8 +2120,8 @@ app.post("/login", (req, res) => {
           userId: user.id,
           role: user.role,
         },
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN },
+        jwtConfig.secret,
+        { expiresIn: jwtConfig.expiresIn },
       );
 
       // Login success
@@ -5062,8 +4902,56 @@ app.delete("/admin/users/:id", authMiddleware, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+async function verifyDatabaseReadiness() {
+  const baseline = await queryAsync(
+    "SELECT migration_id FROM schema_migrations WHERE migration_id = ? LIMIT 1",
+    ["0001_initial_schema"],
+  );
+  if (baseline.length === 0) {
+    throw new Error("Apply database migrations before starting the application.");
+  }
+
+  const requiredStatuses = [
+    [1, "pending"],
+    [2, "verified"],
+    [3, "rejected"],
+    [4, "claimed"],
+    [5, "returned"],
+    [6, "deleted"],
+  ];
+  const statuses = await queryAsync(
+    "SELECT id, status_name FROM item_statuses WHERE id BETWEEN 1 AND 6",
+  );
+  for (const [id, statusName] of requiredStatuses) {
+    if (!statuses.some((row) => Number(row.id) === id && row.status_name === statusName)) {
+      throw new Error("Required item status reference data is missing or inconsistent.");
+    }
+  }
+
+  const [locationCount] = await queryAsync("SELECT COUNT(*) AS total FROM locations");
+  if (Number(locationCount.total) === 0) {
+    throw new Error("Location reference data is missing; run the reference seed command.");
+  }
+
+  const [categoryCount] = await queryAsync("SELECT COUNT(*) AS total FROM categories");
+  if (Number(categoryCount.total) === 0) {
+    throw new Error("No categories are configured. Approve and seed the category list before starting the application.");
+  }
+}
+
+async function startServer() {
+  await db.ready;
+  await verifyDatabaseReadiness();
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error(
+    "Database readiness check failed; server was not started.",
+    error.code || error.message,
+  );
+  process.exitCode = 1;
+  db.destroy();
 });
-
-
