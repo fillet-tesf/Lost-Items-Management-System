@@ -1272,11 +1272,15 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use("/uploads", express.static("uploads"));
-app.use(express.static(path.join(__dirname, "../frontend"))); // for serving frontend files if needed
+const repositoryRoot = path.resolve(__dirname, "..");
+const frontendRoot = fs.existsSync(path.join(repositoryRoot, "index.html"))
+  ? repositoryRoot
+  : path.join(__dirname, "../frontend");
+app.use(express.static(frontendRoot)); // for serving frontend files if needed
 app.use("/api/chatbot", chatbotRouter);
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/index.html"));
+  res.sendFile(path.join(frontendRoot, "index.html"));
 });
 
 app.get("/categories", async (req, res) => {
