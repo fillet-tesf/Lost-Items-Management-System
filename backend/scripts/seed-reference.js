@@ -47,18 +47,18 @@ const expectedCategories = [
   "Other",
 ];
 
-function query(sql, parameters = []) {
+function query(connection, sql, parameters = []) {
   return new Promise((resolve, reject) => {
-    db.query(sql, parameters, (error, results) => {
+    connection.query(sql, parameters, (error, results) => {
       if (error) return reject(error);
       resolve(results);
     });
   });
 }
 
-function transaction(method) {
+function transaction(connection, method) {
   return new Promise((resolve, reject) => {
-    db[method]((error) => (error ? reject(error) : resolve()));
+    connection[method]((error) => (error ? reject(error) : resolve()));
   });
 }
 
@@ -74,10 +74,18 @@ function splitSql(source) {
 }
 
 async function main() {
+  let connection;
   let transactionStarted = false;
   try {
     await db.ready;
+    connection = await new Promise((resolve, reject) => {
+      db.getConnection((error, checkedOutConnection) => {
+        if (error) return reject(error);
+        resolve(checkedOutConnection);
+      });
+    });
     const applied = await query(
+      connection,
       "SELECT migration_id FROM schema_migrations WHERE migration_id = ? LIMIT 1",
       [baselineId],
     );
@@ -85,13 +93,14 @@ async function main() {
       throw new Error("Apply the initial schema migration before seeding references.");
     }
 
-    await transaction("beginTransaction");
+    await transaction(connection, "beginTransaction");
     transactionStarted = true;
     const statements = splitSql(fs.readFileSync(seedPath, "utf8"));
     if (statements.length === 0) throw new Error("Reference seed file is empty.");
-    for (const statement of statements) await query(statement);
+    for (const statement of statements) await query(connection, statement);
 
     const statusRows = await query(
+      connection,
       "SELECT id, status_name FROM item_statuses WHERE id BETWEEN 1 AND 6 OR status_name IN (?, ?, ?, ?, ?, ?)",
       expectedStatuses.map(([, name]) => name),
     );
@@ -104,6 +113,7 @@ async function main() {
     }
 
     const locationRows = await query(
+      connection,
       `SELECT name FROM locations WHERE name IN (${expectedLocations.map(() => "?").join(", ")})`,
       expectedLocations,
     );
@@ -116,6 +126,7 @@ async function main() {
     }
 
     const categoryRows = await query(
+      connection,
       `SELECT name FROM categories WHERE name IN (${expectedCategories.map(() => "?").join(", ")})`,
       expectedCategories,
     );
@@ -127,12 +138,12 @@ async function main() {
       );
     }
 
-    await transaction("commit");
+    await transaction(connection, "commit");
     transactionStarted = false;
     console.log("Reference seed complete (statuses, locations, and approved categories verified).");
   } catch (error) {
     if (transactionStarted) {
-      await transaction("rollback").catch(() => {});
+      await transaction(connection, "rollback").catch(() => {});
     }
     console.error(
       "Reference seeding failed; conflicting rows were not overwritten.",
@@ -140,6 +151,7 @@ async function main() {
     );
     process.exitCode = 1;
   } finally {
+    if (connection) connection.release();
     await closeDatabase();
   }
 }
