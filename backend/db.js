@@ -36,19 +36,29 @@ if (sslValue === "true") {
   connectionOptions.ssl = { rejectUnauthorized: true };
 }
 
-const db = mysql.createConnection(connectionOptions);
+// Keep a single pooled connection to preserve the existing shared-session
+// behavior while allowing mysql2 to replace a connection after it is closed.
+const db = mysql.createPool({
+  ...connectionOptions,
+  connectionLimit: 1,
+  waitForConnections: true,
+});
 
 db.ready = new Promise((resolve, reject) => {
-  db.connect((err) => {
+  db.getConnection((err, connection) => {
     if (err) {
       console.error(`Database connection failed (${err.code || "unknown error"})`);
       reject(err);
       return;
     }
 
+    connection.release();
     console.log("Connected to MySQL database");
     resolve();
   });
 });
+
+// Preserve the shutdown hook used by server.js on startup failure.
+db.destroy = () => db.end();
 
 module.exports = db;
